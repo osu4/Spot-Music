@@ -123,6 +123,13 @@ body.paused #npArt{transform:scale(.86)}
 #devs .dev:hover{background:rgba(255,255,255,.1)}
 #devs .dev small{display:block;color:var(--dim);font-size:12px;margin-top:2px}
 #devs .dev.on{color:var(--red)}
+#side .fh{display:flex;align-items:center;justify-content:space-between;width:100%;background:none;border:0;cursor:pointer;font-size:13px;font-weight:600;color:var(--dim);margin:18px 0 6px;padding:0 10px;text-align:left;transition:color .2s}
+#side .fh:hover{color:#fff}
+.fh svg{width:16px;height:16px;fill:currentColor;transition:transform .35s cubic-bezier(.2,.8,.2,1)}
+.fh.closed svg{transform:rotate(-90deg)}
+.fold{display:grid;grid-template-rows:1fr;transition:grid-template-rows .35s cubic-bezier(.2,.8,.2,1),opacity .3s}
+.fold>div{overflow:hidden;min-height:0}
+.fold.closed{grid-template-rows:0fr;opacity:0;visibility:hidden;transition:grid-template-rows .35s cubic-bezier(.2,.8,.2,1),opacity .3s,visibility 0s .35s}
 @media(max-width:820px){#app{grid-template-columns:1fr}#side{display:none}#dock{grid-template-columns:1fr auto}.mid .prog,.right input{display:none}#np{grid-template-columns:1fr}#npArt{display:none}.head{flex-direction:column;align-items:flex-start}#view{padding:20px}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -142,13 +149,13 @@ body.paused #npArt{transform:scale(.86)}
     <input id="q" type="search" placeholder="Поиск" aria-label="Поиск">
     <a href="#home">Главная</a>
     <a href="#queue">Очередь</a>
-    <h3>Медиатека</h3>
+    <button class="fh" data-fold="lib" aria-expanded="true">Медиатека<svg viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg></button><div class="fold" id="f-lib"><div>
     <a href="#tracks">Любимые треки</a>
     <a href="#albums">Альбомы</a>
     <a href="#artists">Артисты</a>
-    <a href="#shows">Подкасты</a>
-    <h3>Плейлисты</h3>
-    <div id="pls"></div>
+    <a href="#shows">Подкасты</a></div></div>
+    <button class="fh" data-fold="pls" aria-expanded="true">Плейлисты<svg viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg></button><div class="fold" id="f-pls"><div>
+    <div id="pls"></div></div></div>
   </aside>
   <main id="view"></main>
 </div>
@@ -546,6 +553,15 @@ $('#pipBtn').onclick = async () => {
   syncPip();
 };
 $('#seek').onclick = e => { const r = e.currentTarget.getBoundingClientRect(); player?.seek(Math.round((e.clientX - r.left) / r.width * st.dur)); };
+
+/* ---------- сворачиваемые разделы сайдбара ---------- */
+const folds = JSON.parse(LS.getItem('folds') || '{}');
+document.querySelectorAll('.fh').forEach(b => {
+  const id = b.dataset.fold, box = $('#f-' + id);
+  const apply = () => { const c = !!folds[id]; box.classList.toggle('closed', c); b.classList.toggle('closed', c); b.setAttribute('aria-expanded', !c); };
+  apply();
+  b.onclick = () => { folds[id] = !folds[id]; LS.setItem('folds', JSON.stringify(folds)); apply(); };
+});
 
 /* ---------- старт ---------- */
 $('#loginBtn').onclick = login;
