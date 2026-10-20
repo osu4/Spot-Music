@@ -158,6 +158,11 @@ h1,h2{letter-spacing:-.02em}
 .mixcover{aspect-ratio:1;border-radius:8px;padding:14px;display:flex;align-items:flex-end;margin-bottom:8px;box-shadow:0 8px 20px rgba(0,0,0,.35);transition:transform .4s cubic-bezier(.2,.8,.2,1),box-shadow .4s}
 .card:hover .mixcover{transform:scale(1.03);box-shadow:0 14px 30px rgba(0,0,0,.45)}
 .mt{font-size:21px;font-weight:800;line-height:1.1;letter-spacing:-.02em;text-align:left}
+.djset{display:grid;gap:12px;max-width:520px;margin-bottom:20px;color:var(--dim)}
+.djset label{display:grid;gap:6px}
+.djset select,.djset input{padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.08);color:#fff;font:inherit;width:100%}
+.djset option{color:#000}
+#gset{display:grid;gap:10px}
 @media(max-width:820px){#app{grid-template-columns:1fr}#side{display:none}#dock{grid-template-columns:1fr auto}.mid .prog,.right input{display:none}#np{grid-template-columns:1fr}#npArt{display:none}.head{flex-direction:column;align-items:flex-start}#view{padding:20px}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -416,10 +421,10 @@ async function queue() {
     '<h2>Далее</h2>' + (q.length ? q.map((t, i) => row(t, i + off, 1)).join('') : '<p class="msg">Очередь пуста. Нажми «+» справа у любого трека, чтобы добавить его.</p>');
 }
 /* ---------- Мой DJ: микс из твоей музыки + голосовые вставки ---------- */
-const dj = {on: false, why: {}, voice: true};
+const dj = {on: false, info: {}, order: [], plan: {}, voice: true, engine: LS.getItem('dengine') || 'browser'};
 const clean = n => n.replace(/\s*[\(\[].*?[\)\]]/g, '').replace(/\s-\s.*$/, '').trim();
 const pick = a => a[Math.floor(Math.random() * a.length)];
-function say(text) {
+function browserSay(text) {
   if (!dj.voice || !window.speechSynthesis) return;
   const u = new SpeechSynthesisUtterance(text);
   const v = speechSynthesis.getVoices().find(v => v.lang.toLowerCase().startsWith('ru'));
@@ -429,34 +434,90 @@ function say(text) {
   u.onend = u.onerror = () => player?.setVolume(+$('#vol').value);
   speechSynthesis.cancel(); speechSynthesis.speak(u);
 }
+/* --- голос Gemini (по API-ключу, который хранится только в этом браузере) --- */
+const GV = ['Kore', 'Aoede', 'Leda', 'Zephyr', 'Puck', 'Charon', 'Fenrir', 'Orus', 'Sulafat', 'Achernar'];
+const gKey = () => LS.getItem('gkey') || '', gVoice = () => LS.getItem('gvoice') || 'Kore';
+const gModel = () => LS.getItem('gmodel') || 'gemini-3.1-flash-tts-preview';
+const useGemini = () => dj.engine === 'gemini' && !!gKey();
+const INTRO = 'Привет! Я твой DJ. Сегодня микс целиком из твоей музыки. Начинаем.';
+let actx = null, gWarned = false;
+const audioCache = new Map();
+const gErr = e => ({'404': 'Gemini: такой модели нет, проверь название в поле «Модель»', '400': 'Gemini: запрос отклонён, проверь модель и ключ', '401': 'Gemini: ключ не подошёл', '403': 'Gemini: ключ не подошёл или нет доступа', '429': 'Gemini: превышен лимит запросов'})[e.message] || 'Gemini: не получилось (' + e.message + ')';
+function geminiAudio(text) {
+  const k = gModel() + '|' + gVoice() + '|' + text;
+  if (!audioCache.has(k)) audioCache.set(k, (async () => {
+    actx ||= new AudioContext({sampleRate: 24000});
+    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + gModel() + ':generateContent', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'x-goog-api-key': gKey()},
+      body: JSON.stringify({
+        contents: [{parts: [{text: 'Скажи по-русски тёплым, бодрым голосом радио-диджея: ' + text}]}],
+        generationConfig: {responseModalities: ['AUDIO'], speechConfig: {voiceConfig: {prebuiltVoiceConfig: {voiceName: gVoice()}}}}
+      })
+    });
+    if (!r.ok) throw new Error(r.status);
+    const d = await r.json();
+    const bin = atob(d.candidates[0].content.parts[0].inlineData.data), n = bin.length >> 1, f = new Float32Array(n);
+    for (let i = 0; i < n; i++) { let v = bin.charCodeAt(2 * i) | (bin.charCodeAt(2 * i + 1) << 8); if (v >= 32768) v -= 65536; f[i] = v / 32768; }
+    const buf = actx.createBuffer(1, n, 24000); buf.copyToChannel(f, 0);
+    return buf;
+  })().catch(e => { audioCache.delete(k); throw e; }));
+  return audioCache.get(k);
+}
+async function sayGemini(text) {
+  const buf = await geminiAudio(text);
+  await actx.resume();
+  try { dj.src?.stop(); } catch (e) {}
+  const src = actx.createBufferSource();
+  src.buffer = buf; src.connect(actx.destination);
+  player?.setVolume(+$('#vol').value * 0.25);
+  src.onended = () => player?.setVolume(+$('#vol').value);
+  dj.src = src; src.start();
+}
+function say(text) {
+  if (!dj.voice) return;
+  if (useGemini()) return sayGemini(text).catch(e => { if (!gWarned) { gWarned = true; toast(gErr(e) + '. Пока говорю обычным голосом.'); } browserSay(text); });
+  browserSay(text);
+}
+async function testVoice() {
+  const k = $('#gkey')?.value.trim(); if (k) LS.setItem('gkey', k);
+  if (!gKey()) return toast('Сначала вставь API-ключ Gemini');
+  try { await sayGemini('Привет! Это мой новый голос. Как тебе?'); } catch (e) { toast(gErr(e)); }
+}
 const LINES = {
   top: ['{a}. Один из треков, которые ты гоняешь чаще всего.', 'Из твоего топа: {t}, {a}.', '{a} и {t}. Ты слушаешь это снова и снова.'],
   recent: ['Вернёмся к тому, что ты слушал недавно: {a}.', '{t}. Кажется, ты уже включал это на днях.', 'Недавнее от {a}.'],
   liked: ['Из твоих любимых: {a}, {t}.', 'Давно не слушал? {t} из твоих лайков.', 'Достаю из медиатеки: {a}.']
 };
+function planFor(uri) {
+  if (!(uri in dj.plan)) { const i = dj.info[uri]; dj.plan[uri] = i && Math.random() < 0.65 ? pick(LINES[i.why]).replace('{a}', i.a).replace('{t}', clean(i.t)) : null; }
+  return dj.plan[uri];
+}
 function djSpeak(t) {
-  const why = dj.on && dj.why[t.uri];
-  if (!why) return;
-  if (dj.first) { dj.first = false; return say('Привет! Я твой DJ. Сегодня микс целиком из твоей музыки. Начинаем.'); }
-  if (Math.random() > 0.65) return;
-  say(pick(LINES[why]).replace('{a}', t.artists[0].name).replace('{t}', clean(t.name)));
+  if (!dj.on || !dj.info[t.uri]) return;
+  if (dj.first) { dj.first = false; say(INTRO); }
+  else { const x = planFor(t.uri); if (x) say(x); }
+  const nx = dj.order[dj.order.indexOf(t.uri) + 1], nt = nx && planFor(nx);
+  if (nt && useGemini()) geminiAudio(nt).catch(() => {});
 }
 const setDjBtn = (txt, dis) => { const b = $('#djStart'); if (b) { b.textContent = txt; b.disabled = !!dis; } };
 function stopDj() {
-  dj.on = false; dj.why = {};
+  dj.on = false; dj.info = {}; dj.order = []; dj.plan = {};
+  try { dj.src?.stop(); } catch (e) {}
   window.speechSynthesis?.cancel();
   player?.setVolume(+$('#vol').value);
   setDjBtn('Включить DJ');
 }
 async function startDj() {
   if (dj.on) return stopDj();
+  if (useGemini()) actx ||= new AudioContext({sampleRate: 24000});
   setDjBtn('Собираю микс…', true);
   try {
     const [t1, t2, t3, rec, tot] = await Promise.all([
       g('/me/top/tracks?limit=30&time_range=short_term'), g('/me/top/tracks?limit=30&time_range=medium_term'),
       g('/me/top/tracks?limit=30&time_range=long_term'), g('/me/player/recently-played?limit=30'), g('/me/tracks?limit=1')]);
     const map = new Map();
-    const add = (arr, why) => arr?.forEach(t => { if (t?.uri && t.uri.startsWith('spotify:track:') && !map.has(t.uri)) map.set(t.uri, why); });
+    const add = (arr, why) => arr?.forEach(t => { if (t?.uri && t.uri.startsWith('spotify:track:') && !map.has(t.uri)) map.set(t.uri, {why, a: t.artists[0].name, t: t.name}); });
     add(t1?.items, 'top'); add(t2?.items, 'top'); add(t3?.items, 'top');
     add(rec?.items?.map(x => x.track), 'recent');
     const total = tot?.total || 0;
@@ -468,7 +529,8 @@ async function startDj() {
     for (let i = mix.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [mix[i], mix[j]] = [mix[j], mix[i]]; }
     const picked = mix.slice(0, 100);
     if (!picked.length) { setDjBtn('Включить DJ'); return toast('Не нашёл музыку для микса'); }
-    dj.why = Object.fromEntries(picked); dj.first = true;
+    dj.info = Object.fromEntries(picked); dj.order = picked.map(x => x[0]); dj.plan = {}; dj.first = true;
+    if (useGemini()) geminiAudio(INTRO).catch(() => {});
     shuf = false; setModes();
     await api('PUT', '/me/player/shuffle?state=false' + dq());
     dj.on = true;
@@ -477,12 +539,27 @@ async function startDj() {
   } catch (e) { dj.on = false; setDjBtn('Включить DJ'); toast('Не получилось собрать микс'); }
 }
 document.addEventListener('change', e => {
+  const id = e.target.id;
+  if (id === 'djEngine') { dj.engine = e.target.value; LS.setItem('dengine', dj.engine); $('#gset').hidden = dj.engine !== 'gemini'; }
+  if (id === 'gkey') LS.setItem('gkey', e.target.value.trim());
+  if (id === 'gvoice') { LS.setItem('gvoice', e.target.value); audioCache.clear(); }
+  if (id === 'gmodel') { LS.setItem('gmodel', e.target.value.trim() || 'gemini-3.1-flash-tts-preview'); audioCache.clear(); }
   if (e.target.id === 'djVoice') { dj.voice = e.target.checked; if (!dj.voice) { speechSynthesis?.cancel(); player?.setVolume(+$('#vol').value); } }
 });
 async function djView() {
   return `<div class="banner djb"><div class="cover dj">DJ</div><div><small>Для тебя</small><h1>Мой DJ</h1><p class="own"><span>Микс из твоей музыки с голосовыми вставками</span></p></div></div>
     <div class="acts2"><button class="pill" id="djStart">${dj.on ? 'Выключить DJ' : 'Включить DJ'}</button>
     <label class="chk"><input type="checkbox" id="djVoice" ${dj.voice ? 'checked' : ''}> Голос DJ</label></div>
+    <div class="djset">
+      <label>Движок голоса <select id="djEngine"><option value="browser"${dj.engine === 'browser' ? ' selected' : ''}>Браузерный</option><option value="gemini"${dj.engine === 'gemini' ? ' selected' : ''}>Gemini (нужен API-ключ)</option></select></label>
+      <div id="gset" ${dj.engine === 'gemini' ? '' : 'hidden'}>
+        <input id="gkey" type="password" placeholder="API-ключ Gemini" autocomplete="off" value="${esc(gKey())}">
+        <select id="gvoice">${GV.map(v => `<option${v === gVoice() ? ' selected' : ''}>${v}</option>`).join('')}</select>
+        <input id="gmodel" placeholder="Модель" value="${esc(gModel())}">
+        <button class="pill ghost" id="gtest">Проверить голос</button>
+        <p class="msg">Ключ можно бесплатно создать на aistudio.google.com/apikey. Он хранится только в этом браузере и в код на GitHub не попадает.</p>
+      </div>
+    </div>
     <p class="msg">DJ собирает до 100 треков из твоего топа, недавно прослушанного и случайных треков из любимых, перемешивает и иногда комментирует, что играет. Голос озвучивает браузер, для русской речи в системе должен быть русский голос (в Edge он есть). Выключение DJ убирает комментарии, музыка продолжает играть.</p>`;
 }
 /* ---------- Подборки на день (собираются из твоих данных, обновляются раз в день) ---------- */
@@ -572,6 +649,7 @@ addEventListener('hashchange', route);
 
 document.addEventListener('click', async e => {
   if (e.target.closest('#djStart')) return startDj();
+  if (e.target.closest('#gtest')) return testVoice();
   const dv = e.target.closest('.dev');
   if (dv) { $('#devs').classList.remove('open'); const x = await api('PUT', '/me/player', {device_ids: [dv.dataset.id], play: true}); if (!x.ok) toast('Не удалось переключить (' + x.status + ')'); return; }
   if (!e.target.closest('.devwrap')) $('#devs').classList.remove('open');
