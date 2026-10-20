@@ -4,11 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Музыка</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root{--fg:#fff;--dim:rgba(255,255,255,.6);--faint:rgba(255,255,255,.28);--red:#fa233b;--line:rgba(255,255,255,.09);color-scheme:dark}
 *{box-sizing:border-box;margin:0}
 html,body{height:100%}
-body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Inter",system-ui,sans-serif;color:var(--fg);background:#1c1c1e;overflow:hidden;font-size:14px}
+body{font-family:"Manrope",-apple-system,BlinkMacSystemFont,"SF Pro Display",system-ui,sans-serif;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility;color:var(--fg);background:#1c1c1e;overflow:hidden;font-size:14px}
 [hidden]{display:none!important}
 a{color:inherit;text-decoration:none}
 button,input{font:inherit;color:inherit}
@@ -130,6 +133,31 @@ body.paused #npArt{transform:scale(.86)}
 .fold{display:grid;grid-template-rows:1fr;transition:grid-template-rows .35s cubic-bezier(.2,.8,.2,1),opacity .3s}
 .fold>div{overflow:hidden;min-height:0}
 .fold.closed{grid-template-rows:0fr;opacity:0;visibility:hidden;transition:grid-template-rows .35s cubic-bezier(.2,.8,.2,1),opacity .3s,visibility 0s .35s}
+h1,h2{letter-spacing:-.02em}
+.row div b,.card b{font-weight:600}
+.banner{display:flex;gap:24px;align-items:flex-end;margin:-30px -38px 0;padding:64px 38px 26px;background:linear-gradient(180deg,rgba(94,64,190,.75),rgba(94,64,190,0))}
+.banner .cover{width:200px;height:200px;border-radius:10px;flex:none;display:grid;place-items:center;background:linear-gradient(135deg,#450af5,#8e8ee5 70%,#c4efd9);box-shadow:0 20px 50px rgba(0,0,0,.45)}
+.banner .cover svg{width:80px;height:80px;fill:#fff}
+.banner small{font-size:13px;font-weight:600}
+.banner h1{font-size:clamp(40px,6vw,76px);font-weight:800;letter-spacing:-.03em;line-height:1;margin:6px 0 14px}
+.own{display:flex;align-items:center;gap:8px;color:var(--dim);font-size:14px;flex-wrap:wrap}
+.own img{width:24px;height:24px;border-radius:50%;object-fit:cover}
+.own b{color:#fff}
+.acts2{display:flex;align-items:center;gap:20px;margin:6px 0 18px}
+.bigplay{width:56px;height:56px;border-radius:50%;background:var(--red);border:0;color:#fff;display:grid;place-items:center;cursor:pointer;transition:transform .15s,filter .2s}
+.bigplay:hover{filter:brightness(1.1);transform:scale(1.05)}
+.bigplay svg{width:28px;height:28px;fill:currentColor}
+.acts2 .sh{background:none;border:0;color:var(--dim);cursor:pointer;padding:6px;border-radius:50%;transition:color .2s}
+.acts2 .sh:hover{color:#fff}
+.acts2 .sh svg{width:30px;height:30px;fill:currentColor}
+#view>.banner,#view>.acts2{animation:rise .55s cubic-bezier(.2,.8,.2,1) both}
+.banner.djb{background:linear-gradient(180deg,rgba(250,35,59,.5),rgba(250,35,59,0))}
+.banner .cover.dj{background:linear-gradient(135deg,#fa233b,#ff9a62);font-size:64px;font-weight:800;letter-spacing:-.04em}
+.chk{display:flex;gap:8px;align-items:center;color:var(--dim);cursor:pointer}
+.chk input{accent-color:var(--red);width:16px;height:16px}
+.mixcover{aspect-ratio:1;border-radius:8px;padding:14px;display:flex;align-items:flex-end;margin-bottom:8px;box-shadow:0 8px 20px rgba(0,0,0,.35);transition:transform .4s cubic-bezier(.2,.8,.2,1),box-shadow .4s}
+.card:hover .mixcover{transform:scale(1.03);box-shadow:0 14px 30px rgba(0,0,0,.45)}
+.mt{font-size:21px;font-weight:800;line-height:1.1;letter-spacing:-.02em;text-align:left}
 @media(max-width:820px){#app{grid-template-columns:1fr}#side{display:none}#dock{grid-template-columns:1fr auto}.mid .prog,.right input{display:none}#np{grid-template-columns:1fr}#npArt{display:none}.head{flex-direction:column;align-items:flex-start}#view{padding:20px}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -149,6 +177,7 @@ body.paused #npArt{transform:scale(.86)}
     <input id="q" type="search" placeholder="Поиск" aria-label="Поиск">
     <a href="#home">Главная</a>
     <a href="#queue">Очередь</a>
+    <a href="#dj">Мой DJ</a>
     <button class="fh" data-fold="lib" aria-expanded="true">Медиатека<svg viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg></button><div class="fold" id="f-lib"><div>
     <a href="#tracks">Любимые треки</a>
     <a href="#albums">Альбомы</a>
@@ -202,7 +231,7 @@ const REDIRECT = location.origin + location.pathname, SV = '4';
 const SCOPES = 'streaming user-read-email user-read-private user-read-playback-state user-modify-playback-state user-read-recently-played user-top-read user-library-read user-library-modify user-follow-read playlist-read-private playlist-read-collaborative';
 let CID = CLIENT_ID.startsWith('ВСТАВЬ') ? LS.getItem('cid') : CLIENT_ID, player, devId, sdkReady = false, authed = false;
 let shownId = null, lines = [], cur = -1, snap = false;
-let curCtx = null, curTracks = [], more = null, rid = 0;
+let curCtx = null, curTracks = [], more = null, rid = 0, after = null, me = null;
 let st = {pos: 0, at: 0, paused: true, dur: 1}, shuf = false, rep = 0;
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -259,7 +288,11 @@ async function api(method, path, body) {
 }
 async function play(body) {
   if (!devId) return toast('Плеер ещё подключается, подожди секунду');
-  const r = await api('PUT', '/me/player/play?device_id=' + devId, body);
+  let r = await api('PUT', '/me/player/play?device_id=' + devId, body);
+  if (!r.ok && body.context_uri?.endsWith(':collection')) {
+    const i = Math.max(0, curTracks.indexOf(body.offset?.uri));
+    r = await api('PUT', '/me/player/play?device_id=' + devId, {uris: curTracks.slice(i, i + 100)});
+  }
   if (!r.ok) toast('Не удалось включить (' + r.status + ')');
 }
 
@@ -275,8 +308,9 @@ const yr = o => (o.release_date || '').slice(0, 4);
 async function home() {
   const [rec, ta, tt, pl] = await Promise.all([
     g('/me/player/recently-played?limit=40'), g('/me/top/artists?limit=10&time_range=short_term'),
-    g('/me/top/tracks?limit=10&time_range=short_term'), g('/me/playlists?limit=12')]);
-  let h = '<h1>Главная</h1>';
+    g('/me/top/tracks?limit=10&time_range=short_term'), g('/me/playlists?limit=50')]);
+  let h = '<h1>Главная</h1><h2>Подборки на день</h2><div class="grid" id="mixes"><p class="msg">Собираю подборки…</p></div>';
+  after = fillMixes;
   if (rec?.items?.length) {
     const seen = new Set(), al = [];
     rec.items.forEach(x => { const a = x.track.album; if (a && !seen.has(a.id)) { seen.add(a.id); al.push(card('album/' + a.id, a, x.track.artists[0].name)); } });
@@ -284,7 +318,9 @@ async function home() {
   }
   if (ta?.items?.length) h += '<h2>Ваши артисты</h2><div class="grid">' + ta.items.map(a => card('artist/' + a.id, a, 'Артист', 1)).join('') + '</div>';
   if (tt?.items?.length) h += '<h2>Ваши треки</h2>' + list(tt.items, 1);
-  if (pl?.items?.length) h += '<h2>Ваши плейлисты</h2><div class="grid">' + pl.items.filter(Boolean).map(p => card('playlist/' + p.id, p, 'Плейлист')).join('') + '</div>';
+  const mine = (pl?.items || []).filter(p => p && p.owner?.id !== 'spotify'), sp = (pl?.items || []).filter(p => p?.owner?.id === 'spotify');
+  if (sp.length) h += '<h2>От Spotify</h2><div class="grid">' + sp.map(p => card('playlist/' + p.id, p, 'Плейлист Spotify')).join('') + '</div>';
+  if (mine.length) h += '<h2>Ваши плейлисты</h2><div class="grid">' + mine.slice(0, 12).map(p => card('playlist/' + p.id, p, 'Плейлист')).join('') + '</div>';
   return h.length > 20 ? h : h + '<p class="msg">Пока нечего показать. Послушай что-нибудь, и здесь появится твоя музыка.</p>';
 }
 async function searchView(q) {
@@ -300,10 +336,36 @@ async function searchView(q) {
   if (pl.length) h += '<h2>Плейлисты</h2><div class="grid">' + pl.map(p => card('playlist/' + p.id, p, 'Плейлист')).join('') + '</div>';
   return h.length > 40 + q.length ? h : h + '<p class="msg">Ничего не нашлось.</p>';
 }
+const getMe = async () => me || (me = await g('/me'));
+const plural = (n, a, b, c) => { const m = n % 100, k = n % 10; return m > 10 && m < 15 ? c : k === 1 ? a : k > 1 && k < 5 ? b : c; };
+const cntText = (n, ms) => {
+  const t = Math.round(ms / 60000), h = Math.floor(t / 60), m = t % 60;
+  return n + ' ' + plural(n, 'трек', 'трека', 'треков') + (ms ? ', ' + (h ? h + ' ч. ' : '') + m + ' мин.' : '');
+};
+async function likedDuration(total) {
+  const c = JSON.parse(LS.getItem('likedDur') || '{}');
+  if (c.n === total) return c.ms;
+  let ms = 0;
+  for (let o = 0; o < total; o += 50) {
+    const d = await get('/me/tracks?limit=50&offset=' + o);
+    d.items.forEach(x => ms += x.track?.duration_ms || 0);
+  }
+  LS.setItem('likedDur', JSON.stringify({n: total, ms}));
+  return ms;
+}
 async function tracks() {
-  const d = await get('/me/tracks?limit=50');
+  const [d, m] = await Promise.all([get('/me/tracks?limit=50'), getMe()]);
   more = d.next ? {url: d.next, kind: 't'} : null;
-  return '<h1>Любимые треки</h1><div id="list">' + list(d.items.map(x => x.track).filter(Boolean), 1) + '</div>' + moreBtn();
+  if (m?.id) curCtx = 'spotify:user:' + m.id + ':collection';
+  const rows = list(d.items.map(x => x.track).filter(Boolean), 1);
+  after = () => likedDuration(d.total).then(ms => { const el = $('#cnt'); if (el) el.textContent = cntText(d.total, ms); }).catch(() => {});
+  const av = m?.images?.[0]?.url ? `<img src="${esc(m.images[0].url)}" alt="">` : '';
+  const owner = m?.display_name ? `${av}<b>${esc(m.display_name)}</b><span>•</span>` : '';
+  return `<div class="banner"><div class="cover"><svg viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg></div>
+    <div><small>Плейлист</small><h1>Любимые треки</h1><p class="own">${owner}<span id="cnt">${cntText(d.total, 0)}</span></p></div></div>
+    <div class="acts2"><button class="bigplay playall" aria-label="Слушать"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
+    <button class="sh shufall" aria-label="Перемешать"><svg viewBox="0 0 24 24"><path d="M10.59 9.17 5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg></button></div>
+    <div id="list">${rows}</div>${moreBtn()}`;
 }
 async function albums() {
   const d = await get('/me/albums?limit=50');
@@ -353,12 +415,145 @@ async function queue() {
   return '<h1>Очередь</h1>' + (now ? '<h2>Сейчас играет</h2>' + row(now, 0, 1) : '') +
     '<h2>Далее</h2>' + (q.length ? q.map((t, i) => row(t, i + off, 1)).join('') : '<p class="msg">Очередь пуста. Нажми «+» справа у любого трека, чтобы добавить его.</p>');
 }
-const routes = {home, search: searchView, tracks, albums, artists, album, playlist, artist, shows, show, queue};
+/* ---------- Мой DJ: микс из твоей музыки + голосовые вставки ---------- */
+const dj = {on: false, why: {}, voice: true};
+const clean = n => n.replace(/\s*[\(\[].*?[\)\]]/g, '').replace(/\s-\s.*$/, '').trim();
+const pick = a => a[Math.floor(Math.random() * a.length)];
+function say(text) {
+  if (!dj.voice || !window.speechSynthesis) return;
+  const u = new SpeechSynthesisUtterance(text);
+  const v = speechSynthesis.getVoices().find(v => v.lang.toLowerCase().startsWith('ru'));
+  if (v) u.voice = v;
+  u.lang = 'ru-RU'; u.rate = 1.02;
+  u.onstart = () => player?.setVolume(+$('#vol').value * 0.25);
+  u.onend = u.onerror = () => player?.setVolume(+$('#vol').value);
+  speechSynthesis.cancel(); speechSynthesis.speak(u);
+}
+const LINES = {
+  top: ['{a}. Один из треков, которые ты гоняешь чаще всего.', 'Из твоего топа: {t}, {a}.', '{a} и {t}. Ты слушаешь это снова и снова.'],
+  recent: ['Вернёмся к тому, что ты слушал недавно: {a}.', '{t}. Кажется, ты уже включал это на днях.', 'Недавнее от {a}.'],
+  liked: ['Из твоих любимых: {a}, {t}.', 'Давно не слушал? {t} из твоих лайков.', 'Достаю из медиатеки: {a}.']
+};
+function djSpeak(t) {
+  const why = dj.on && dj.why[t.uri];
+  if (!why) return;
+  if (dj.first) { dj.first = false; return say('Привет! Я твой DJ. Сегодня микс целиком из твоей музыки. Начинаем.'); }
+  if (Math.random() > 0.65) return;
+  say(pick(LINES[why]).replace('{a}', t.artists[0].name).replace('{t}', clean(t.name)));
+}
+const setDjBtn = (txt, dis) => { const b = $('#djStart'); if (b) { b.textContent = txt; b.disabled = !!dis; } };
+function stopDj() {
+  dj.on = false; dj.why = {};
+  window.speechSynthesis?.cancel();
+  player?.setVolume(+$('#vol').value);
+  setDjBtn('Включить DJ');
+}
+async function startDj() {
+  if (dj.on) return stopDj();
+  setDjBtn('Собираю микс…', true);
+  try {
+    const [t1, t2, t3, rec, tot] = await Promise.all([
+      g('/me/top/tracks?limit=30&time_range=short_term'), g('/me/top/tracks?limit=30&time_range=medium_term'),
+      g('/me/top/tracks?limit=30&time_range=long_term'), g('/me/player/recently-played?limit=30'), g('/me/tracks?limit=1')]);
+    const map = new Map();
+    const add = (arr, why) => arr?.forEach(t => { if (t?.uri && t.uri.startsWith('spotify:track:') && !map.has(t.uri)) map.set(t.uri, why); });
+    add(t1?.items, 'top'); add(t2?.items, 'top'); add(t3?.items, 'top');
+    add(rec?.items?.map(x => x.track), 'recent');
+    const total = tot?.total || 0;
+    for (let i = 0; i < 3 && total; i++) {
+      const d = await g('/me/tracks?limit=25&offset=' + Math.floor(Math.random() * Math.max(1, total - 25)));
+      add(d?.items?.map(x => x.track), 'liked');
+    }
+    const mix = [...map.entries()];
+    for (let i = mix.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [mix[i], mix[j]] = [mix[j], mix[i]]; }
+    const picked = mix.slice(0, 100);
+    if (!picked.length) { setDjBtn('Включить DJ'); return toast('Не нашёл музыку для микса'); }
+    dj.why = Object.fromEntries(picked); dj.first = true;
+    shuf = false; setModes();
+    await api('PUT', '/me/player/shuffle?state=false' + dq());
+    dj.on = true;
+    await play({uris: picked.map(x => x[0])});
+    setDjBtn('Выключить DJ');
+  } catch (e) { dj.on = false; setDjBtn('Включить DJ'); toast('Не получилось собрать микс'); }
+}
+document.addEventListener('change', e => {
+  if (e.target.id === 'djVoice') { dj.voice = e.target.checked; if (!dj.voice) { speechSynthesis?.cancel(); player?.setVolume(+$('#vol').value); } }
+});
+async function djView() {
+  return `<div class="banner djb"><div class="cover dj">DJ</div><div><small>Для тебя</small><h1>Мой DJ</h1><p class="own"><span>Микс из твоей музыки с голосовыми вставками</span></p></div></div>
+    <div class="acts2"><button class="pill" id="djStart">${dj.on ? 'Выключить DJ' : 'Включить DJ'}</button>
+    <label class="chk"><input type="checkbox" id="djVoice" ${dj.voice ? 'checked' : ''}> Голос DJ</label></div>
+    <p class="msg">DJ собирает до 100 треков из твоего топа, недавно прослушанного и случайных треков из любимых, перемешивает и иногда комментирует, что играет. Голос озвучивает браузер, для русской речи в системе должен быть русский голос (в Edge он есть). Выключение DJ убирает комментарии, музыка продолжает играть.</p>`;
+}
+/* ---------- Подборки на день (собираются из твоих данных, обновляются раз в день) ---------- */
+function seeded(str) {
+  let h = 1779033703 ^ str.length;
+  for (let i = 0; i < str.length; i++) { h = Math.imul(h ^ str.charCodeAt(i), 3432918353); h = h << 13 | h >>> 19; }
+  return () => { h = Math.imul(h ^ h >>> 16, 2246822507); h = Math.imul(h ^ h >>> 13, 3266489909); return ((h ^= h >>> 16) >>> 0) / 4294967296; };
+}
+const shuffled = (a, r) => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const uniq = a => { const m = new Map(); a.forEach(t => { if (t?.uri?.startsWith('spotify:track:') && !m.has(t.uri)) m.set(t.uri, t); }); return [...m.values()]; };
+let likedCache = null;
+async function likedAll() {
+  if (likedCache) return likedCache;
+  const out = []; let url = '/me/tracks?limit=50';
+  while (url) { const d = await get(url); d.items.forEach(x => x.track && out.push(x.track)); url = d.next; }
+  return likedCache = out;
+}
+const grad = h => `linear-gradient(135deg,hsl(${h} 75% 52%),hsl(${(h + 45) % 360} 70% 32%))`;
+async function buildMixes() {
+  const key = 'mixes_' + new Date().toLocaleDateString('sv');
+  const c = LS.getItem(key);
+  if (c) return JSON.parse(c);
+  Object.keys(LS).filter(k => k.startsWith('mixes_')).forEach(k => LS.removeItem(k));
+  const rng = seeded(key);
+  const [t1, t2, t3, rec, ta, liked] = await Promise.all([
+    g('/me/top/tracks?limit=50&time_range=short_term'), g('/me/top/tracks?limit=50&time_range=medium_term'),
+    g('/me/top/tracks?limit=50&time_range=long_term'), g('/me/player/recently-played?limit=50'),
+    g('/me/top/artists?limit=3&time_range=medium_term'), likedAll().catch(() => [])]);
+  const recent = uniq((rec?.items || []).map(x => x.track));
+  const defs = [
+    ['day', 'Микс дня', uniq([...(t1?.items || []), ...(t2?.items || []), ...recent, ...shuffled(liked, rng).slice(0, 40)]), 350, true],
+    ['month', 'Топ месяца', uniq(t1?.items || []), 210],
+    ['half', 'Топ полугода', uniq(t2?.items || []), 270],
+    ['all', 'Топ за всё время', uniq(t3?.items || []), 30],
+    ['recent', 'Недавнее', recent, 160],
+    ['old', 'Забытые любимые', liked.length > 40 ? shuffled(liked.slice(-150), rng).slice(0, 40) : [], 300]
+  ];
+  (ta?.items || []).forEach((a, i) => defs.push(['art' + i, 'Любимое: ' + a.name, shuffled(liked.filter(t => t.artists.some(x => x.id === a.id)), rng).slice(0, 40), [190, 50, 120][i]]));
+  const mini = t => ({uri: t.uri, name: t.name, duration_ms: t.duration_ms, artists: t.artists.map(a => ({id: a.id, name: a.name})), album: {images: [{url: t.album?.images?.slice(-1)[0]?.url || ''}]}});
+  const mixes = defs.map(([id, title, ts, hue, mixIt]) => {
+    ts = (mixIt ? shuffled(ts, rng) : ts).slice(0, 50);
+    const names = [...new Set(ts.map(t => t.artists[0].name))].slice(0, 3);
+    return {id, title, hue, sub: names.join(', ') + (names.length ? ' и другие' : ''), tracks: ts.map(mini)};
+  }).filter(m => m.tracks.length >= 5);
+  try { LS.setItem(key, JSON.stringify(mixes)); } catch (e) {}
+  return mixes;
+}
+async function fillMixes() {
+  const box = $('#mixes');
+  try {
+    const ms = await buildMixes();
+    if (!$('#mixes')) return;
+    box.innerHTML = ms.length ? ms.map((m, i) => `<a class="card" href="#mix/${m.id}" style="--d:${i * 45}ms"><div class="mixcover" style="background:${grad(m.hue)}"><div class="mt">${esc(m.title)}</div></div><span>${esc(m.sub)}</span></a>`).join('') : '<p class="msg">Пока не из чего собрать подборки: послушай музыку или добавь треки в любимые.</p>';
+  } catch (e) { if ($('#mixes')) $('#mixes').innerHTML = '<p class="msg">Не получилось собрать подборки. Обнови страницу.</p>'; }
+}
+async function mixView(id) {
+  const m = (await buildMixes()).find(x => x.id === id);
+  if (!m) return '<p class="msg">Подборка не найдена. Вернись на главную.</p>';
+  curTracks = m.tracks.map(t => t.uri);
+  return `<div class="banner" style="background:linear-gradient(180deg,hsl(${m.hue} 60% 45% / .65),transparent)"><div class="cover" style="background:${grad(m.hue)};padding:16px;align-items:end;justify-items:start"><div class="mt" style="font-size:30px">${esc(m.title)}</div></div>
+    <div><small>Подборка на день</small><h1>${esc(m.title)}</h1><p class="own"><span>${m.tracks.length} треков</span><span>•</span><span>обновляется каждый день</span></p></div></div>
+    <div class="acts2"><button class="bigplay playall" aria-label="Слушать"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
+    <button class="sh shufall" aria-label="Перемешать"><svg viewBox="0 0 24 24"><path d="M10.59 9.17 5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg></button></div>
+    ${m.tracks.map((t, i) => row(t, i, 1)).join('')}`;
+}
+const routes = {home, search: searchView, tracks, albums, artists, album, playlist, artist, shows, show, queue, dj: djView, mix: mixView};
 
 async function route() {
   if (!authed) return;
   const my = ++rid;
-  curCtx = null; curTracks = []; more = null; $('#np').classList.remove('open'); $('#npBtn').classList.remove('on');
+  curCtx = null; curTracks = []; more = null; after = null; $('#np').classList.remove('open'); $('#npBtn').classList.remove('on');
   const h = decodeURIComponent((location.hash || '#home').slice(1)), i = h.indexOf('/');
   const name = i < 0 ? h : h.slice(0, i), arg = i < 0 ? '' : h.slice(i + 1);
   document.querySelectorAll('#side a').forEach(a => a.classList.toggle('on', a.getAttribute('href') === (location.hash || '#home')));
@@ -370,11 +565,13 @@ async function route() {
     if (my !== rid) return;
     V.innerHTML = html; V.scrollTop = 0; V.classList.remove('loading');
     V.querySelectorAll('h1,h2,.head,.card,.row,.msg').forEach((el, i) => el.style.setProperty('--d', Math.min(i, 20) * 30 + 'ms'));
+    if (after) { const f = after; after = null; f(); }
   } catch (e) { if (my === rid) { V.classList.remove('loading'); V.innerHTML = '<p class="msg">' + esc(e.message) + '</p>'; } }
 }
 addEventListener('hashchange', route);
 
 document.addEventListener('click', async e => {
+  if (e.target.closest('#djStart')) return startDj();
   const dv = e.target.closest('.dev');
   if (dv) { $('#devs').classList.remove('open'); const x = await api('PUT', '/me/player', {device_ids: [dv.dataset.id], play: true}); if (!x.ok) toast('Не удалось переключить (' + x.status + ')'); return; }
   if (!e.target.closest('.devwrap')) $('#devs').classList.remove('open');
@@ -407,7 +604,7 @@ $('#q').onkeydown = e => { if (e.key === 'Enter' && e.target.value.trim()) locat
 
 /* ---------- плеер ---------- */
 function startPlayer() {
-  player = new Spotify.Player({name: 'Custom Player', getOAuthToken: async cb => cb(await getToken()), volume: 0.7});
+  player = new Spotify.Player({name: 'Custom Player', getOAuthToken: async cb => cb(await getToken()), volume: +$('#vol').value});
   player.addListener('ready', ({device_id}) => { devId = device_id; api('PUT', '/me/player', {device_ids: [device_id], play: false}); });
   player.addListener('player_state_changed', onState);
   ['initialization_error', 'authentication_error', 'account_error', 'playback_error'].forEach(e => player.addListener(e, ({message}) => toast(message)));
@@ -431,6 +628,7 @@ function onState(s) {
     loadLyrics(t, s.duration);
     checkLike(t.uri);
     syncPip();
+    djSpeak(t);
   }
 }
 let likeUri = null, liked = false;
@@ -507,11 +705,12 @@ function setVol(v) {
   $('#vol').value = v; $('#vol').style.setProperty('--v', v * 100 + '%');
   $('#volPath').setAttribute('d', v === 0 ? VOL.off : v < 0.5 ? VOL.down : VOL.up);
   player?.setVolume(v);
+  LS.setItem('vol', v);
   if (v > 0) lastVol = v;
 }
 $('#vol').oninput = e => setVol(+e.target.value);
 $('#muteBtn').onclick = () => setVol(+$('#vol').value > 0 ? 0 : lastVol);
-setVol(0.7);
+setVol(+(LS.getItem('vol') ?? 0.7));
 
 $('#qBtn').onclick = () => { location.hash = '#queue'; };
 
