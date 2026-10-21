@@ -2,7 +2,11 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1c1c1e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Музыка</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -163,7 +167,48 @@ h1,h2{letter-spacing:-.02em}
 .djset select,.djset input{padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.08);color:#fff;font:inherit;width:100%}
 .djset option{color:#000}
 #gset{display:grid;gap:10px}
-@media(max-width:820px){#app{grid-template-columns:1fr}#side{display:none}#dock{grid-template-columns:1fr auto}.mid .prog,.right input{display:none}#np{grid-template-columns:1fr}#npArt{display:none}.head{flex-direction:column;align-items:flex-start}#view{padding:20px}}
+#tabs,#npClose,#npInfo,.mq{display:none}
+#npClose{background:none;border:0;color:#fff;cursor:pointer;padding:4px}
+#npClose svg{width:32px;height:32px;fill:currentColor}
+#npInfo b,#npInfo span{display:block}
+#npInfo span{color:var(--dim);margin-top:2px}
+.lnk{display:block;padding:14px 4px;font-size:17px;font-weight:600;border-bottom:1px solid var(--line)}
+@media(max-width:820px){
+body{height:100dvh}
+#app{grid-template-columns:1fr;height:100%}
+#side{display:none}
+#view{padding:20px 16px calc(150px + env(safe-area-inset-bottom))}
+.banner{margin:-20px -16px 0;padding:36px 16px 20px;flex-direction:column;align-items:flex-start;gap:16px}
+.banner .cover,.head img{width:min(60vw,220px);height:min(60vw,220px)}
+.head{flex-direction:column;align-items:flex-start;gap:16px}
+.grid{grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:18px 12px}
+.row .q{opacity:1}
+.mq{display:block;width:100%;padding:12px 14px;border-radius:12px;border:0;background:rgba(255,255,255,.1);margin-bottom:16px;font-size:16px;color:#fff;font-family:inherit}
+#toast{bottom:calc(140px + env(safe-area-inset-bottom));width:max-content;max-width:90vw}
+#tabs{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:40;height:calc(58px + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);background:rgba(28,28,30,.85);backdrop-filter:blur(30px);border-top:1px solid var(--line);transition:transform .4s cubic-bezier(.2,.8,.2,1)}
+#tabs a{flex:1;display:grid;justify-items:center;align-content:center;gap:2px;font-size:11px;font-weight:600;color:var(--dim);transition:color .2s}
+#tabs a.on{color:var(--red)}
+#tabs svg{width:24px;height:24px;fill:currentColor}
+body.npopen #tabs{transform:translateY(100%)}
+#dock{left:8px;right:8px;bottom:calc(64px + env(safe-area-inset-bottom));height:64px;grid-template-columns:1fr auto;gap:8px;padding:0 10px;border-radius:14px;border:1px solid var(--line);transition:bottom .4s cubic-bezier(.2,.8,.2,1)}
+#dock #shuf,#dock #prev,#dock #rep,#dock .prog,#dock .right{display:none}
+#dock .ctl{gap:6px}
+body.npopen #dock{left:0;right:0;bottom:0;height:auto;display:flex;flex-direction:column;align-items:stretch;gap:10px;padding:14px 20px calc(16px + env(safe-area-inset-bottom));border-radius:22px 22px 0 0;border-width:1px 0 0}
+body.npopen #mini{display:none}
+body.npopen #dock #shuf,body.npopen #dock #prev,body.npopen #dock #rep{display:grid}
+body.npopen #dock .prog{display:flex}
+body.npopen #dock .right{display:flex;justify-content:space-around}
+body.npopen #dock .right input,body.npopen #pipBtn,body.npopen #fsBtn,body.npopen #npBtn{display:none}
+body.npopen #dock .ctl{gap:20px}
+#np{inset:0;padding:calc(12px + env(safe-area-inset-top)) 20px 230px;grid-template-columns:1fr;grid-template-rows:auto auto auto minmax(0,1fr);gap:12px;align-content:start;align-items:start;justify-items:center;background:rgba(18,18,20,.94)}
+#npClose{display:grid;justify-self:start}
+#npArt{width:min(66vw,280px)}
+#npInfo{display:block;text-align:center;width:100%}
+#npInfo b{font-size:19px}
+#lyrics{width:100%;height:100%;padding:15vh 0}
+#lyrics p{font-size:24px}
+#devs{width:min(240px,70vw)}
+}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -195,7 +240,9 @@ h1,h2{letter-spacing:-.02em}
 </div>
 
 <section id="np">
+  <button id="npClose" aria-label="Свернуть"><svg viewBox="0 0 24 24"><path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg></button>
   <img id="npArt" alt="Обложка">
+  <div id="npInfo"><b id="npT"></b><span id="npA"></span></div>
   <div id="lyrics" aria-label="Текст песни"></div>
 </section>
 
@@ -225,6 +272,12 @@ h1,h2{letter-spacing:-.02em}
     <button class="ib" id="fsBtn" aria-label="Во весь экран" title="Во весь экран"><svg viewBox="0 0 24 24"><path id="fsPath" d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg></button>
   </div>
 </footer>
+<nav id="tabs">
+  <a href="#home" data-tab="home"><svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>Главная</a>
+  <a href="#search" data-tab="search"><svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>Поиск</a>
+  <a href="#lib" data-tab="lib"><svg viewBox="0 0 24 24"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 9H9V9h10v2zm-4 4H9v-2h6v2zm4-8H9V5h10v2z"/></svg>Медиатека</a>
+  <a href="#dj" data-tab="dj"><svg viewBox="0 0 24 24"><path d="M12 1c-4.97 0-9 4.03-9 9v7c0 1.66 1.34 3 3 3h3v-8H5v-2c0-3.87 3.13-7 7-7s7 3.13 7 7v2h-4v8h3c1.66 0 3-1.34 3-3v-7c0-4.97-4.03-9-9-9z"/></svg>DJ</a>
+</nav>
 <p id="toast" hidden></p>
 
 <script>
@@ -232,6 +285,7 @@ h1,h2{letter-spacing:-.02em}
 const CLIENT_ID = 'd92c4e464cf84953a09fbcb179e2d81d';
 /* ======================== */
 const LS = localStorage, $ = s => document.querySelector(s);
+const REMOTE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const REDIRECT = location.origin + location.pathname, SV = '4';
 const SCOPES = 'streaming user-read-email user-read-private user-read-playback-state user-modify-playback-state user-read-recently-played user-top-read user-library-read user-library-modify user-follow-read playlist-read-private playlist-read-collaborative';
 let CID = CLIENT_ID.startsWith('ВСТАВЬ') ? LS.getItem('cid') : CLIENT_ID, player, devId, sdkReady = false, authed = false;
@@ -292,7 +346,8 @@ async function api(method, path, body) {
   });
 }
 async function play(body) {
-  if (!devId) return toast('Плеер ещё подключается, подожди секунду');
+  if (!devId && REMOTE) { const d = await g('/me/player/devices'); devId = d?.devices?.[0]?.id || null; }
+  if (!devId) return toast(REMOTE ? 'Не нашёл устройство. Открой приложение Spotify и включи любой трек.' : 'Плеер ещё подключается, подожди секунду');
   let r = await api('PUT', '/me/player/play?device_id=' + devId, body);
   if (!r.ok && body.context_uri?.endsWith(':collection')) {
     const i = Math.max(0, curTracks.indexOf(body.offset?.uri));
@@ -330,16 +385,18 @@ async function home() {
 }
 async function searchView(q) {
   $('#q').value = q;
-  if (!q) return '<h1>Поиск</h1><p class="msg">Введи запрос в поле слева и нажми Enter.</p>';
+  const mq = `<input id="q2" class="mq" type="search" placeholder="Поиск" value="${esc(q)}" aria-label="Поиск">`;
+  if (!q) { after = () => { if (innerWidth <= 820) $('#q2')?.focus(); }; return mq + '<h1>Поиск</h1><p class="msg">Введи запрос и нажми Enter.</p>'; }
   const d = await get('/search?' + new URLSearchParams({q, type: 'track,artist,album,playlist', limit: 10}));
   const ts = (d.tracks?.items || []).filter(Boolean), ar = (d.artists?.items || []).filter(Boolean);
   const al = (d.albums?.items || []).filter(Boolean), pl = (d.playlists?.items || []).filter(Boolean);
-  let h = '<h1>Результаты: ' + esc(q) + '</h1>';
+  let h = mq + '<h1>Результаты: ' + esc(q) + '</h1>';
+  const base = h.length;
   if (ts.length) h += '<h2>Треки</h2>' + list(ts, 1);
   if (ar.length) h += '<h2>Артисты</h2><div class="grid">' + ar.map(a => card('artist/' + a.id, a, 'Артист', 1)).join('') + '</div>';
   if (al.length) h += '<h2>Альбомы</h2><div class="grid">' + al.map(a => card('album/' + a.id, a, a.artists[0].name)).join('') + '</div>';
   if (pl.length) h += '<h2>Плейлисты</h2><div class="grid">' + pl.map(p => card('playlist/' + p.id, p, 'Плейлист')).join('') + '</div>';
-  return h.length > 40 + q.length ? h : h + '<p class="msg">Ничего не нашлось.</p>';
+  return h.length > base ? h : h + '<p class="msg">Ничего не нашлось.</p>';
 }
 const getMe = async () => me || (me = await g('/me'));
 const plural = (n, a, b, c) => { const m = n % 100, k = n % 10; return m > 10 && m < 15 ? c : k === 1 ? a : k > 1 && k < 5 ? b : c; };
@@ -625,16 +682,23 @@ async function mixView(id) {
     <button class="sh shufall" aria-label="Перемешать"><svg viewBox="0 0 24 24"><path d="M10.59 9.17 5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg></button></div>
     ${m.tracks.map((t, i) => row(t, i, 1)).join('')}`;
 }
-const routes = {home, search: searchView, tracks, albums, artists, album, playlist, artist, shows, show, queue, dj: djView, mix: mixView};
+async function libView() {
+  const pl = await g('/me/playlists?limit=50');
+  const links = [['tracks', 'Любимые треки'], ['albums', 'Альбомы'], ['artists', 'Артисты'], ['shows', 'Подкасты'], ['queue', 'Очередь']];
+  return '<h1>Медиатека</h1>' + links.map(([r, t]) => `<a class="lnk" href="#${r}">${t}</a>`).join('') +
+    '<h2>Плейлисты</h2><div class="grid">' + (pl?.items || []).filter(Boolean).map(p => card('playlist/' + p.id, p, 'Плейлист')).join('') + '</div>';
+}
+const routes = {home, search: searchView, tracks, albums, artists, album, playlist, artist, shows, show, queue, dj: djView, mix: mixView, lib: libView};
 
 async function route() {
   if (!authed) return;
   const my = ++rid;
-  curCtx = null; curTracks = []; more = null; after = null; $('#np').classList.remove('open'); $('#npBtn').classList.remove('on');
+  curCtx = null; curTracks = []; more = null; after = null; $('#np').classList.remove('open'); $('#npBtn').classList.remove('on'); document.body.classList.remove('npopen');
   const h = decodeURIComponent((location.hash || '#home').slice(1)), i = h.indexOf('/');
   const name = i < 0 ? h : h.slice(0, i), arg = i < 0 ? '' : h.slice(i + 1);
   document.querySelectorAll('#side a').forEach(a => a.classList.toggle('on', a.getAttribute('href') === (location.hash || '#home')));
   $('#qBtn').classList.toggle('on', name === 'queue');
+  document.querySelectorAll('#tabs a').forEach(a => a.classList.toggle('on', a.dataset.tab === (['tracks', 'albums', 'artists', 'shows', 'queue', 'lib'].includes(name) ? 'lib' : name)));
   const V = $('#view');
   V.classList.add('loading');
   try {
@@ -675,13 +739,44 @@ document.addEventListener('click', async e => {
 });
 document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && e.target.classList.contains('row')) e.target.click();
-  if (e.key === 'Escape') { $('#np').classList.remove('open'); $('#npBtn').classList.remove('on'); }
+  if (e.key === 'Escape') { $('#np').classList.remove('open'); $('#npBtn').classList.remove('on'); document.body.classList.remove('npopen'); }
+  if (e.target.id === 'q2' && e.key === 'Enter' && e.target.value.trim()) location.hash = '#search/' + encodeURIComponent(e.target.value.trim());
   if (e.code === 'Space' && e.target === document.body && player) { e.preventDefault(); player.togglePlay(); }
 });
 $('#q').onkeydown = e => { if (e.key === 'Enter' && e.target.value.trim()) location.hash = '#search/' + encodeURIComponent(e.target.value.trim()); };
 
 /* ---------- плеер ---------- */
+/* ---------- режим пульта (телефоны: Web Playback SDK там не работает) ---------- */
+const REP = {off: 0, context: 1, track: 2};
+let volT = null;
+async function pollRemote() {
+  if (document.hidden) return;
+  try {
+    const r = await fetch('https://api.spotify.com/v1/me/player', {headers: {Authorization: 'Bearer ' + await getToken()}});
+    if (r.status === 204 || !r.ok) return;
+    const j = await r.json(), it = j.item;
+    devId = j.device?.id || devId;
+    if (!it) return;
+    const cur = it.album ? it : {...it, album: {name: it.show?.name || '', images: it.images || []}, artists: [{name: it.show?.name || ''}]};
+    onState({paused: !j.is_playing, position: j.progress_ms || 0, duration: it.duration_ms || 1, shuffle: j.shuffle_state, repeat_mode: REP[j.repeat_state] || 0, track_window: {current_track: cur}});
+  } catch (e) {}
+}
+function startRemote() {
+  const later = () => setTimeout(pollRemote, 450);
+  player = {
+    togglePlay: async () => { const p = position(), was = st.paused; st = {...st, pos: p, at: performance.now(), paused: !was}; document.body.classList.toggle('paused', !was); await api('PUT', was ? '/me/player/play' : '/me/player/pause'); later(); },
+    previousTrack: async () => { await api('POST', '/me/player/previous'); later(); },
+    nextTrack: async () => { await api('POST', '/me/player/next'); later(); },
+    seek: async ms => { st = {...st, pos: ms, at: performance.now()}; await api('PUT', '/me/player/seek?position_ms=' + Math.round(ms)); later(); },
+    setVolume: v => { clearTimeout(volT); volT = setTimeout(() => api('PUT', '/me/player/volume?volume_percent=' + Math.round(v * 100)), 250); }
+  };
+  $('#bArtist').textContent = 'Включи трек в Spotify или выбери из списка';
+  setInterval(pollRemote, 3000);
+  document.addEventListener('visibilitychange', pollRemote);
+  pollRemote();
+}
 function startPlayer() {
+  if (REMOTE) { if (!player) startRemote(); return; }
   player = new Spotify.Player({name: 'Custom Player', getOAuthToken: async cb => cb(await getToken()), volume: +$('#vol').value});
   player.addListener('ready', ({device_id}) => { devId = device_id; api('PUT', '/me/player', {device_ids: [device_id], play: false}); });
   player.addListener('player_state_changed', onState);
@@ -699,6 +794,7 @@ function onState(s) {
     const img = t.album.images[0]?.url || '';
     $('#bTitle').textContent = t.name;
     $('#bArtist').textContent = t.artists.map(a => a.name).join(', ');
+    $('#npT').textContent = t.name; $('#npA').textContent = t.artists.map(a => a.name).join(', ');
     ['#bArt', '#npArt'].forEach(id => { const el = $(id); el.style.opacity = 0; el.onload = el.onerror = () => el.style.opacity = 1; el.src = img; });
     const bg = $('#bg'); bg.style.opacity = 0;
     setTimeout(() => { bg.style.backgroundImage = `url("${img}")`; bg.style.opacity = 1; }, 380);
@@ -763,8 +859,8 @@ function syncLyrics(p) {
   requestAnimationFrame(loop);
 })();
 
-const toggleNp = () => { const np = $('#np'); np.classList.toggle('open'); $('#npBtn').classList.toggle('on', np.classList.contains('open')); if (np.classList.contains('open')) { cur = -1; snap = true; } };
-$('#mini').onclick = $('#npBtn').onclick = toggleNp;
+const toggleNp = () => { const np = $('#np'); np.classList.toggle('open'); document.body.classList.toggle('npopen', np.classList.contains('open')); $('#npBtn').classList.toggle('on', np.classList.contains('open')); if (np.classList.contains('open')) { cur = -1; snap = true; } };
+$('#mini').onclick = $('#npBtn').onclick = $('#npClose').onclick = toggleNp;
 $('#mini').onkeydown = e => { if (e.key === 'Enter') toggleNp(); };
 const dq = () => devId ? '&device_id=' + devId : '';
 const setModes = () => { $('#shuf').classList.toggle('on', shuf); $('#rep').classList.toggle('on', rep > 0); $('#rep').classList.toggle('one', rep === 2); };
@@ -859,7 +955,7 @@ async function init() {
     $('#gate').hidden = true; $('#app').hidden = false; $('#dock').hidden = false;
     document.body.classList.add('paused');
     route();
-    if (sdkReady) startPlayer();
+    if (REMOTE || sdkReady) startPlayer();
     g('/me/playlists?limit=50').then(d => { if (d) $('#pls').innerHTML = d.items.filter(Boolean).map(p => `<a href="#playlist/${esc(p.id)}">${esc(p.name)}</a>`).join(''); });
   } catch (e) {
     dropTokens();
