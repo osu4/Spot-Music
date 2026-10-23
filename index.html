@@ -224,6 +224,11 @@ body.npopen #dock .ctl{gap:20px}
 #lyrics.plain p{color:rgba(255,255,255,.88);filter:none;cursor:default;transform:none;font-size:clamp(18px,2vw,24px);font-weight:600}
 #lyrics p.src,#lyrics.plain p.src{font-size:12px;font-weight:500;color:var(--dim);filter:none;cursor:default;padding:28px 0 0;transform:none}
 #lyrics p.src a{text-decoration:underline}
+.devlist .dev{display:block;width:100%;text-align:left;background:rgba(255,255,255,.1);border:0;border-radius:14px;padding:12px 14px;margin-bottom:8px;cursor:pointer;font-size:15px}
+.devlist .dev.on{outline:2px solid var(--red)}
+.devlist .dev small{display:block;color:var(--dim);font-size:12px;margin-top:2px}
+.diag{white-space:pre-wrap;font:12px/1.5 ui-monospace,Consolas,monospace;color:var(--dim);background:rgba(255,255,255,.07);border-radius:12px;padding:12px;margin-top:10px;display:none}
+.diag:not(:empty){display:block}
 /* ===== Liquid Glass ===== */
 #bg{filter:blur(70px) saturate(2.1)}
 #shade{background:linear-gradient(180deg,rgba(0,0,0,.28),rgba(0,0,0,.52))}
@@ -341,6 +346,7 @@ body.npopen #dock{left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bo
 const CLIENT_ID = 'd92c4e464cf84953a09fbcb179e2d81d';
 /* ======================== */
 const LS = localStorage, $ = s => document.querySelector(s);
+const BUILD = '2026-10-23-b';
 const REMOTE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const REDIRECT = location.origin + location.pathname, SV = '4';
 const SCOPES = 'streaming user-read-email user-read-private user-read-playback-state user-modify-playback-state user-read-recently-played user-top-read user-library-read user-library-modify user-follow-read playlist-read-private playlist-read-collaborative';
@@ -352,7 +358,7 @@ let st = {pos: 0, at: 0, paused: true, dur: 1}, shuf = false, rep = 0;
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt = ms => { const s = Math.floor(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
 const pic = (o, i = 1) => { const a = o?.images || o?.album?.images || []; return a[Math.min(i, a.length - 1)]?.url || ''; };
-function toast(m) { const t = $('#toast'); t.textContent = m; t.hidden = false; clearTimeout(toast.id); toast.id = setTimeout(() => t.hidden = true, 5000); }
+function toast(m) { const t = $('#toast'); t.textContent = m; t.hidden = false; clearTimeout(toast.id); toast.id = setTimeout(() => t.hidden = true, 8000); }
 function gate(text, mode) {
   $('#gateText').textContent = text;
   $('#cid').hidden = $('#saveCid').hidden = mode !== 'cid';
@@ -409,7 +415,7 @@ function wakeHint() {
 async function play(body) {
   if (!REMOTE && !devId) return toast('Плеер ещё подключается, подожди секунду');
   // на телефоне сначала пробуем активное устройство без device_id
-  let r = await putPlay(body, REMOTE ? null : devId);
+  let r = await putPlay(body, REMOTE ? (LS.getItem('rdev') || null) : devId);
   if (!r.ok && REMOTE) {
     const d = await g('/me/player/devices');
     const dv = d?.devices?.find(x => x.is_active) || d?.devices?.find(x => /smartphone|tablet/i.test(x.type)) || d?.devices?.[0];
@@ -424,7 +430,7 @@ async function play(body) {
     const i = Math.max(0, curTracks.indexOf(body.offset?.uri));
     r = await putPlay({uris: curTracks.slice(i, i + 100)}, devId);
   }
-  if (r.ok) { if (REMOTE) setTimeout(pollRemote, 800); return; }
+  if (r.ok) { if (REMOTE) setTimeout(async () => { await pollRemote(); toast(lastDev ? 'Играет на: ' + lastDev.name : 'Команда отправлена, но Spotify не показывает активное устройство'); }, 1400); return; }
   const why = await whyFail(r);
   if (r.status === 404) { toast('Нет активного устройства: открой Spotify на телефоне, включи любой трек (хоть на секунду) и вернись сюда'); if (REMOTE) wakeHint(); }
   else if (why === 'PREMIUM_REQUIRED') toast('Для управления воспроизведением нужен Spotify Premium');
@@ -835,11 +841,49 @@ async function mixView(id) {
     <button class="sh shufall" aria-label="Перемешать"><svg viewBox="0 0 24 24"><path d="M10.59 9.17 5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg></button></div>
     ${m.tracks.map((t, i) => row(t, i, 1)).join('')}`;
 }
+async function loadDevList() {
+  const box = $('#devList'); if (!box) return;
+  const d = await g('/me/player/devices');
+  if (!$('#devList')) return;
+  const ds = d?.devices || [], pref = LS.getItem('rdev');
+  box.innerHTML = ds.length ? ds.map(x => `<button class="dev${x.id === pref ? ' on' : ''}" data-id="${esc(x.id)}">${esc(x.name)}<small>${esc(x.type)}${x.is_active ? ' · активно сейчас' : ''}${x.id === pref ? ' · выбрано для запуска' : ''}</small></button>`).join('')
+    : '<p class="msg">Spotify не показывает ни одного устройства. Открой приложение Spotify на телефоне, включи любой трек и обнови эту страницу.</p>';
+}
+async function diag() {
+  const out = $('#diagOut'), log = m => { out.textContent += m + '\n'; };
+  out.textContent = '';
+  log('Версия сайта: ' + BUILD + ' | режим пульта: ' + (REMOTE ? 'да' : 'нет'));
+  log('Выбранное устройство: ' + (LS.getItem('rdev') || 'нет'));
+  try {
+    const r = await api('GET', '/me/player');
+    log('/me/player → ' + r.status);
+    if (r.status === 200) { const j = await r.json(); log('  активно: ' + (j.device?.name || '?') + ' (' + (j.device?.type || '?') + '), играет: ' + j.is_playing); }
+  } catch (e) { log('/me/player → ошибка сети'); }
+  try {
+    const r = await api('GET', '/me/player/devices');
+    log('/me/player/devices → ' + r.status);
+    if (r.ok) { const j = await r.json(); (j.devices || []).forEach(x => log('  ' + x.name + ' (' + x.type + ')' + (x.is_active ? ' [активно]' : ''))); if (!(j.devices || []).length) log('  список пуст'); }
+    else log('  ' + await whyFail(r));
+  } catch (e) { log('/me/player/devices → ошибка сети'); }
+  try {
+    const t = await g('/me/tracks?limit=1'), uri = t?.items?.[0]?.track?.uri;
+    if (uri) {
+      log('Пробую включить тестовый трек…');
+      const r = await putPlay({uris: [uri]}, LS.getItem('rdev') || null);
+      log('play → ' + r.status + ' ' + (r.ok ? 'ок' : await whyFail(r)));
+    }
+  } catch (e) { log('play → ошибка сети'); }
+  log('Готово. Пришли этот текст или скриншот.');
+}
 async function libView() {
   const pl = await g('/me/playlists?limit=50');
+  after = loadDevList;
   const links = [['tracks', 'Любимые треки'], ['albums', 'Альбомы'], ['artists', 'Артисты'], ['shows', 'Подкасты'], ['queue', 'Очередь']];
   return '<h1>Медиатека</h1>' + links.map(([r, t]) => `<a class="lnk" href="#${r}">${t}</a>`).join('') +
-    '<h2>Плейлисты</h2><div class="grid">' + (pl?.items || []).filter(Boolean).map(p => card('playlist/' + p.id, p, 'Плейлист')).join('') + '</div>';
+    '<h2>Играть на устройстве</h2><div class="devlist" id="devList"><p class="msg">Ищу устройства…</p></div>' +
+    '<p style="margin-top:12px"><button class="pill ghost" id="diagBtn">Проверить связь (включит тестовый трек)</button></p><pre class="diag" id="diagOut"></pre>' +
+    '<h2>Плейлисты</h2><div class="grid">' + (pl?.items || []).filter(Boolean).map(p => card('playlist/' + p.id, p, 'Плейлист')).join('') + '</div>' +
+    '<p class="msg" style="margin-top:28px">Версия сайта: ' + BUILD + '</p>';
 }
 const routes = {home, search: searchView, tracks, albums, artists, album, playlist, artist, shows, show, queue, dj: djView, mix: mixView, lib: libView};
 
@@ -870,11 +914,12 @@ addEventListener('hashchange', route);
 document.addEventListener('click', async e => {
   if (e.target.closest('#djStart')) return startDj();
   if (e.target.closest('#gtest')) return testVoice();
+  if (e.target.closest('#diagBtn')) return diag();
   if (e.target.closest('#vibeGo')) return vibeFromInput();
   const chip = e.target.closest('.chip');
   if (chip) { $('#vibeIn').value = chip.textContent; return vibeFromInput(); }
   const dv = e.target.closest('.dev');
-  if (dv) { $('#devs').classList.remove('open'); const x = await api('PUT', '/me/player', {device_ids: [dv.dataset.id], play: true}); if (!x.ok) toast('Не удалось переключить (' + x.status + ')'); return; }
+  if (dv) { $('#devs').classList.remove('open'); if (REMOTE) LS.setItem('rdev', dv.dataset.id); const x = await api('PUT', '/me/player', {device_ids: [dv.dataset.id], play: !REMOTE}); if (!x.ok) toast('Не удалось переключить (' + x.status + ')'); loadDevList(); return; }
   if (!e.target.closest('.devwrap')) $('#devs').classList.remove('open');
   const qb = e.target.closest('.q');
   if (qb) { const x = await api('POST', '/me/player/queue?uri=' + encodeURIComponent(qb.dataset.q) + (devId ? '&device_id=' + devId : '')); return toast(x.ok ? 'Добавлено в очередь' : 'Не удалось добавить (' + x.status + ')'); }
@@ -908,13 +953,15 @@ $('#q').onkeydown = e => { if (e.key === 'Enter' && e.target.value.trim()) locat
 /* ---------- плеер ---------- */
 /* ---------- режим пульта (телефоны: Web Playback SDK там не работает) ---------- */
 const REP = {off: 0, context: 1, track: 2};
-let volT = null;
+let volT = null, lastDev = null;
 async function pollRemote() {
   if (document.hidden) return;
   try {
     const r = await fetch('https://api.spotify.com/v1/me/player', {headers: {Authorization: 'Bearer ' + await getToken()}});
-    if (r.status === 204 || !r.ok) return;
+    if (r.status === 204) { lastDev = null; return; }
+    if (!r.ok) return;
     const j = await r.json(), it = j.item;
+    lastDev = j.device || lastDev;
     devId = j.device?.id || devId;
     if (!it) return;
     const cur = it.album ? it : {...it, album: {name: it.show?.name || '', images: it.images || []}, artists: [{name: it.show?.name || ''}]};
