@@ -212,7 +212,19 @@ body.npopen #dock .ctl{gap:20px}
 #lyrics p{font-size:24px}
 #devs{width:min(240px,70vw)}
 }
-/* ===== Liquid Glass ===== */
+.vibe{display:flex;gap:10px;max-width:680px;margin-bottom:12px}
+.vibe input{flex:1;min-width:0;padding:14px 18px;border-radius:999px;border:0;background:rgba(255,255,255,.12);box-shadow:inset 0 1px 1px rgba(255,255,255,.3);color:#fff;font:inherit;font-size:15px}
+.vibe input::placeholder{color:var(--dim)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;max-width:680px;margin-bottom:16px}
+.chip{background:linear-gradient(135deg,rgba(255,255,255,.18),rgba(255,255,255,.06));border:0;border-radius:999px;padding:8px 14px;cursor:pointer;font-size:13px;box-shadow:inset 0 1px 0 rgba(255,255,255,.3);transition:transform .3s cubic-bezier(.34,1.56,.64,1),background .2s}
+.chip:hover{background:rgba(255,255,255,.2)}
+.chip:active{transform:scale(.94)}
+#vibeOut{white-space:pre-line;max-width:680px;margin-bottom:16px}
+.gap{padding:6px!important}
+#lyrics.plain p{color:rgba(255,255,255,.88);filter:none;cursor:default;transform:none;font-size:clamp(18px,2vw,24px);font-weight:600}
+#lyrics p.src,#lyrics.plain p.src{font-size:12px;font-weight:500;color:var(--dim);filter:none;cursor:default;padding:28px 0 0;transform:none}
+#lyrics p.src a{text-decoration:underline}
+/* ===== Liquid Glass =====
 #bg{filter:blur(70px) saturate(2.1)}
 #shade{background:linear-gradient(180deg,rgba(0,0,0,.28),rgba(0,0,0,.52))}
 #dock,#tabs,#devs,#toast,#side{background:linear-gradient(135deg,rgba(255,255,255,.18),rgba(255,255,255,.05)),rgba(20,20,24,.3);-webkit-backdrop-filter:blur(26px) saturate(190%);backdrop-filter:blur(26px) saturate(190%);border:0;box-shadow:inset 0 0 0 1px rgba(255,255,255,.1),inset 0 1px 0 rgba(255,255,255,.4),inset 0 0 24px rgba(255,255,255,.05),0 10px 40px rgba(0,0,0,.35)}
@@ -389,15 +401,35 @@ async function api(method, path, body) {
     body: body && JSON.stringify(body)
   });
 }
+const whyFail = async r => { try { const j = await r.clone().json(); return j.error?.reason || j.error?.message || ''; } catch (e) { return ''; } };
+const putPlay = (body, dev) => api('PUT', '/me/player/play' + (dev ? '?device_id=' + dev : ''), body);
+function wakeHint() {
+  $('#bArtist').innerHTML = 'Открой Spotify и включи любой трек · <a href="https://open.spotify.com/" target="_blank" rel="noopener" style="text-decoration:underline">Открыть Spotify</a>';
+}
 async function play(body) {
-  if (!devId && REMOTE) { const d = await g('/me/player/devices'); devId = d?.devices?.[0]?.id || null; }
-  if (!devId) return toast(REMOTE ? 'Не нашёл устройство. Открой приложение Spotify и включи любой трек.' : 'Плеер ещё подключается, подожди секунду');
-  let r = await api('PUT', '/me/player/play?device_id=' + devId, body);
+  if (!REMOTE && !devId) return toast('Плеер ещё подключается, подожди секунду');
+  // на телефоне сначала пробуем активное устройство без device_id
+  let r = await putPlay(body, REMOTE ? null : devId);
+  if (!r.ok && REMOTE) {
+    const d = await g('/me/player/devices');
+    const dv = d?.devices?.find(x => x.is_active) || d?.devices?.find(x => /smartphone|tablet/i.test(x.type)) || d?.devices?.[0];
+    if (dv) {
+      devId = dv.id;
+      await api('PUT', '/me/player', {device_ids: [dv.id], play: false});
+      await new Promise(res => setTimeout(res, 600));
+      r = await putPlay(body, dv.id);
+    }
+  }
   if (!r.ok && body.context_uri?.endsWith(':collection')) {
     const i = Math.max(0, curTracks.indexOf(body.offset?.uri));
-    r = await api('PUT', '/me/player/play?device_id=' + devId, {uris: curTracks.slice(i, i + 100)});
+    r = await putPlay({uris: curTracks.slice(i, i + 100)}, devId);
   }
-  if (!r.ok) toast('Не удалось включить (' + r.status + ')');
+  if (r.ok) { if (REMOTE) setTimeout(pollRemote, 800); return; }
+  const why = await whyFail(r);
+  if (r.status === 404) { toast('Нет активного устройства: открой Spotify на телефоне, включи любой трек (хоть на секунду) и вернись сюда'); if (REMOTE) wakeHint(); }
+  else if (why === 'PREMIUM_REQUIRED') toast('Для управления воспроизведением нужен Spotify Premium');
+  else if (r.status === 429) toast('Слишком много запросов, подожди минуту');
+  else toast('Не удалось включить (' + r.status + (why ? ': ' + why : '') + ')');
 }
 
 /* ---------- элементы интерфейса ---------- */
@@ -590,13 +622,14 @@ const LINES = {
   recent: ['Вернёмся к тому, что ты слушал недавно: {a}.', '{t}. Кажется, ты уже включал это на днях.', 'Недавнее от {a}.'],
   liked: ['Из твоих любимых: {a}, {t}.', 'Давно не слушал? {t} из твоих лайков.', 'Достаю из медиатеки: {a}.']
 };
+LINES.new = ['Кое-что новенькое для тебя: {a}.', 'А это {a}. Ты мог это пропустить.', '{t}. Думаю, тебе зайдёт.'];
 function planFor(uri) {
   if (!(uri in dj.plan)) { const i = dj.info[uri]; dj.plan[uri] = i && Math.random() < 0.65 ? pick(LINES[i.why]).replace('{a}', i.a).replace('{t}', clean(i.t)) : null; }
   return dj.plan[uri];
 }
 function djSpeak(t) {
   if (!dj.on || !dj.info[t.uri]) return;
-  if (dj.first) { dj.first = false; say(INTRO); }
+  if (dj.first) { dj.first = false; say(dj.intro || INTRO); }
   else { const x = planFor(t.uri); if (x) say(x); }
   const nx = dj.order[dj.order.indexOf(t.uri) + 1], nt = nx && planFor(nx);
   if (nt && useGemini()) geminiAudio(nt).catch(() => {});
@@ -608,6 +641,82 @@ function stopDj() {
   window.speechSynthesis?.cancel();
   player?.setVolume(+$('#vol').value);
   setDjBtn('Включить DJ');
+}
+async function launchMix(picked, intro) {
+  dj.info = Object.fromEntries(picked); dj.order = picked.map(x => x[0]); dj.plan = {}; dj.first = true; dj.intro = intro || INTRO;
+  if (useGemini()) geminiAudio(dj.intro).catch(() => {});
+  shuf = false; setModes();
+  await api('PUT', '/me/player/shuffle?state=false' + dq());
+  dj.on = true;
+  await play({uris: picked.map(x => x[0])});
+  setDjBtn('Выключить DJ');
+}
+
+/* ---------- запрос вайба своими словами ---------- */
+const gText = () => LS.getItem('gtext') || 'gemini-flash-latest';
+async function geminiJson(prompt) {
+  const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + gText() + ':generateContent', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'x-goog-api-key': gKey()},
+    body: JSON.stringify({contents: [{parts: [{text: prompt}]}], generationConfig: {responseMimeType: 'application/json', temperature: 0.9}})
+  });
+  if (!r.ok) throw new Error(r.status);
+  const d = await r.json();
+  const txt = (d.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('');
+  return JSON.parse(txt.replace(/^\s*```(?:json)?\s*|\s*```\s*$/g, '').trim());
+}
+async function vibe(text, status) {
+  if (!gKey()) {
+    status('Ключа Gemini нет, поэтому просто ищу по тексту…');
+    const d = await get('/search?' + new URLSearchParams({q: text, type: 'track', limit: 10}));
+    const tr = (d.tracks?.items || []).filter(Boolean);
+    if (!tr.length) throw new Error('Ничего не нашлось по такому запросу');
+    await launchMix(tr.map(t => [t.uri, {why: 'new', a: t.artists[0].name, t: t.name}]), null);
+    status('Нашёл ' + tr.length + ' треков по запросу. Чтобы DJ понимал вайбы («спокойное», «для работы»), добавь ключ Gemini ниже.');
+    return;
+  }
+  status('Смотрю твою медиатеку…');
+  const liked = await likedAll().catch(() => []);
+  const likedSet = new Set(liked.map(t => t.uri));
+  const sample = shuffled(liked, Math.random).slice(0, 250);
+  const list = sample.map((t, i) => i + '|' + t.artists[0].name + ' - ' + clean(t.name)).join('\n');
+  status('DJ думает…');
+  const j = await geminiJson(`Ты DJ в музыкальном плеере. Пользователь просит: "${text}".
+Ниже пронумерованный список треков из его медиатеки (номер|исполнитель - название).
+Верни ТОЛЬКО JSON такого вида:
+{"say": "1-2 коротких дружелюбных предложения по-русски: что ты включаешь и почему, без номеров", "pick": [номера подходящих треков из списка, до 40 штук, можно пустой массив], "artists": ["исполнители, чьи треки стоит добавить через поиск, названия на оригинальном языке (зарубежных латиницей)"]}
+Если пользователь назвал конкретного исполнителя: в pick только его треки из списка, в artists только он сам.
+Если просит настроение или жанр: в pick самые подходящие треки из списка, в artists до 6 подходящих исполнителей (можно тех, кого нет в списке, чтобы он услышал новое).
+Список:
+${list}`);
+  const entries = new Map();
+  [...new Set((j.pick || []).map(Number))].forEach(i => { const t = sample[i]; if (t) entries.set(t.uri, {why: 'liked', a: t.artists[0].name, t: t.name}); });
+  const libCount = entries.size;
+  const artists = (j.artists || []).map(String).slice(0, 6);
+  for (const name of artists) {
+    status('Ищу: ' + name + '…');
+    for (const off of artists.length === 1 ? [0, 10, 20] : [0]) {
+      const d = await g('/search?' + new URLSearchParams({q: 'artist:"' + name + '"', type: 'track', limit: 10, offset: off}));
+      (d?.tracks?.items || []).forEach(t => {
+        const n = name.toLowerCase();
+        if (t?.uri && !entries.has(t.uri) && t.artists.some(a => { const x = a.name.toLowerCase(); return x.includes(n) || n.includes(x); }))
+          entries.set(t.uri, {why: likedSet.has(t.uri) ? 'liked' : 'new', a: t.artists[0].name, t: t.name});
+      });
+    }
+  }
+  const mix = shuffled([...entries.entries()], Math.random).slice(0, 100);
+  if (!mix.length) throw new Error('Не нашёл подходящих треков, попробуй сформулировать по-другому');
+  await launchMix(mix, j.say);
+  status((j.say || '') + '\n\nСобрал ' + mix.length + ' треков: ' + Math.min(libCount, mix.length) + ' из твоей медиатеки и остальные новые.');
+}
+async function vibeFromInput() {
+  const text = $('#vibeIn')?.value.trim();
+  if (!text) return toast('Напиши, что хочешь послушать');
+  const out = $('#vibeOut'), go = $('#vibeGo');
+  go.disabled = true;
+  try { await vibe(text, m => { out.textContent = m; }); }
+  catch (e) { out.textContent = 'Не получилось: ' + (/^\d+$/.test(e.message) ? gErr(e) : e.message); }
+  go.disabled = false;
 }
 async function startDj() {
   if (dj.on) return stopDj();
@@ -630,31 +739,31 @@ async function startDj() {
     for (let i = mix.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [mix[i], mix[j]] = [mix[j], mix[i]]; }
     const picked = mix.slice(0, 100);
     if (!picked.length) { setDjBtn('Включить DJ'); return toast('Не нашёл музыку для микса'); }
-    dj.info = Object.fromEntries(picked); dj.order = picked.map(x => x[0]); dj.plan = {}; dj.first = true;
-    if (useGemini()) geminiAudio(INTRO).catch(() => {});
-    shuf = false; setModes();
-    await api('PUT', '/me/player/shuffle?state=false' + dq());
-    dj.on = true;
-    await play({uris: picked.map(x => x[0])});
-    setDjBtn('Выключить DJ');
+    await launchMix(picked, null);
   } catch (e) { dj.on = false; setDjBtn('Включить DJ'); toast('Не получилось собрать микс'); }
 }
 document.addEventListener('change', e => {
   const id = e.target.id;
   if (id === 'djEngine') { dj.engine = e.target.value; LS.setItem('dengine', dj.engine); $('#gset').hidden = dj.engine !== 'gemini'; }
   if (id === 'gkey') LS.setItem('gkey', e.target.value.trim());
+  if (id === 'gtext') LS.setItem('gtext', e.target.value.trim());
   if (id === 'gvoice') { LS.setItem('gvoice', e.target.value); audioCache.clear(); }
   if (id === 'gmodel') { LS.setItem('gmodel', e.target.value.trim() || 'gemini-3.1-flash-tts-preview'); audioCache.clear(); }
   if (e.target.id === 'djVoice') { dj.voice = e.target.checked; if (!dj.voice) { speechSynthesis?.cancel(); player?.setVolume(+$('#vol').value); } }
 });
 async function djView() {
   return `<div class="banner djb"><div class="cover dj">DJ</div><div><small>Для тебя</small><h1>Мой DJ</h1><p class="own"><span>Микс из твоей музыки с голосовыми вставками</span></p></div></div>
+    <div class="vibe"><input id="vibeIn" placeholder="Что включить? Например: спокойное на вечер или включи Кендрика Ламара" autocomplete="off"><button class="pill" id="vibeGo">Включить</button></div>
+    <div class="chips">${['Спокойное на вечер', 'Энергичное для тренировки', 'Вайбовые ночные треки', 'Грустное', 'Включи Кендрика Ламара', 'Что-то новое по моему вкусу'].map(c => `<button class="chip">${c}</button>`).join('')}</div>
+    <p class="msg" id="vibeOut"></p>
     <div class="acts2"><button class="pill" id="djStart">${dj.on ? 'Выключить DJ' : 'Включить DJ'}</button>
     <label class="chk"><input type="checkbox" id="djVoice" ${dj.voice ? 'checked' : ''}> Голос DJ</label></div>
     <div class="djset">
+      <input id="gkey" type="password" placeholder="API-ключ Gemini (для вайбов и голоса)" autocomplete="off" value="${esc(gKey())}">
+      <input id="gtext" placeholder="Модель для вайбов (по умолчанию gemini-flash-latest)" autocomplete="off" value="${esc(LS.getItem('gtext') || '')}">
       <label>Движок голоса <select id="djEngine"><option value="browser"${dj.engine === 'browser' ? ' selected' : ''}>Браузерный</option><option value="gemini"${dj.engine === 'gemini' ? ' selected' : ''}>Gemini (нужен API-ключ)</option></select></label>
       <div id="gset" ${dj.engine === 'gemini' ? '' : 'hidden'}>
-        <input id="gkey" type="password" placeholder="API-ключ Gemini" autocomplete="off" value="${esc(gKey())}">
+        
         <select id="gvoice">${GV.map(v => `<option${v === gVoice() ? ' selected' : ''}>${v}</option>`).join('')}</select>
         <input id="gmodel" placeholder="Модель" value="${esc(gModel())}">
         <button class="pill ghost" id="gtest">Проверить голос</button>
@@ -761,6 +870,9 @@ addEventListener('hashchange', route);
 document.addEventListener('click', async e => {
   if (e.target.closest('#djStart')) return startDj();
   if (e.target.closest('#gtest')) return testVoice();
+  if (e.target.closest('#vibeGo')) return vibeFromInput();
+  const chip = e.target.closest('.chip');
+  if (chip) { $('#vibeIn').value = chip.textContent; return vibeFromInput(); }
   const dv = e.target.closest('.dev');
   if (dv) { $('#devs').classList.remove('open'); const x = await api('PUT', '/me/player', {device_ids: [dv.dataset.id], play: true}); if (!x.ok) toast('Не удалось переключить (' + x.status + ')'); return; }
   if (!e.target.closest('.devwrap')) $('#devs').classList.remove('open');
@@ -788,6 +900,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && e.target.classList.contains('row')) e.target.click();
   if (e.key === 'Escape') { $('#np').classList.remove('open'); $('#npBtn').classList.remove('on'); document.body.classList.remove('npopen'); }
   if (e.target.id === 'q2' && e.key === 'Enter' && e.target.value.trim()) location.hash = '#search/' + encodeURIComponent(e.target.value.trim());
+  if (e.target.id === 'vibeIn' && e.key === 'Enter') vibeFromInput();
   if (e.code === 'Space' && e.target === document.body && player) { e.preventDefault(); player.togglePlay(); }
 });
 $('#q').onkeydown = e => { if (e.key === 'Enter' && e.target.value.trim()) location.hash = '#search/' + encodeURIComponent(e.target.value.trim()); };
@@ -866,23 +979,59 @@ $('#like').onclick = async () => {
 };
 const position = () => st.paused ? st.pos : Math.min(st.pos + performance.now() - st.at, st.dur);
 
+const parseLrc = lrc => lrc.split('\n').map(l => {
+  const m = l.match(/^\[(\d+):(\d+(?:\.\d+)?)\](.*)/);
+  return m && {t: (+m[1] * 60 + +m[2]) * 1000, s: m[3].trim()};
+}).filter(l => l && l.s);
+const lrclib = (path, params) => fetch('https://lrclib.net/api/' + path + '?' + new URLSearchParams(params)).then(r => r.ok ? r.json() : null);
+async function findLyrics(t, dur) {
+  const artist = t.artists[0].name, title = clean(t.name), secs = Math.round(dur / 1000), al = artist.toLowerCase();
+  let plain = null, instrumental = false;
+  const ok = x => x && (Math.abs((x.duration || 0) - secs) <= 3 || (x.artistName || '').toLowerCase().includes(al) || al.includes((x.artistName || '').toLowerCase()));
+  const note = x => { if (x?.instrumental) instrumental = true; if (!plain && x?.plainLyrics) plain = x.plainLyrics; };
+  // 1. LRCLIB: точное совпадение
+  const exact = await lrclib('get', {track_name: t.name, artist_name: artist, album_name: t.album.name, duration: secs}).catch(() => null);
+  if (exact?.syncedLyrics) return {synced: parseLrc(exact.syncedLyrics), src: 'LRCLIB'};
+  note(exact);
+  // 2. LRCLIB: поиск с разными формулировками
+  for (const q of [{track_name: title, artist_name: artist}, {q: artist + ' ' + title}, {q: title}]) {
+    const arr = (await lrclib('search', q).catch(() => null) || []).filter(ok);
+    arr.sort((a, b) => Math.abs(a.duration - secs) - Math.abs(b.duration - secs));
+    const best = arr.find(x => x.syncedLyrics);
+    if (best) return {synced: parseLrc(best.syncedLyrics), src: 'LRCLIB'};
+    arr.forEach(note);
+  }
+  if (plain) return {plain, src: 'LRCLIB'};
+  if (instrumental) return {instrumental: true};
+  // 3. lyrics.ovh: только простой текст, без синхронизации
+  try {
+    const r = await fetch('https://api.lyrics.ovh/v1/' + encodeURIComponent(artist) + '/' + encodeURIComponent(title));
+    const d = r.ok ? await r.json() : null;
+    if (d?.lyrics?.trim()) return {plain: d.lyrics.trim(), src: 'lyrics.ovh'};
+  } catch (e) {}
+  return null;
+}
 async function loadLyrics(t, dur) {
   const id = t.id, box = $('#lyrics');
-  lines = []; cur = -1; box.innerHTML = ''; box.scrollTop = 0;
-  try {
-    const q = new URLSearchParams({track_name: t.name, artist_name: t.artists[0].name, album_name: t.album.name, duration: Math.round(dur / 1000)});
-    const r = await fetch('https://lrclib.net/api/get?' + q);
-    if (!r.ok) throw 0;
-    const d = await r.json();
-    if (!d.syncedLyrics) throw 0;
-    lines = d.syncedLyrics.split('\n').map(l => {
-      const m = l.match(/^\[(\d+):(\d+(?:\.\d+)?)\](.*)/);
-      return m && {t: (+m[1] * 60 + +m[2]) * 1000, s: m[3].trim()};
-    }).filter(l => l && l.s);
-  } catch (e) {}
+  lines = []; cur = -1; box.innerHTML = ''; box.scrollTop = 0; box.classList.remove('plain');
+  let res = null;
+  try { res = await findLyrics(t, dur); } catch (e) {}
   if (id !== shownId) return;
-  if (!lines.length) { box.innerHTML = '<p class="none">Для этого трека нет синхронного текста.</p>'; return; }
-  lines.forEach(l => { const p = document.createElement('p'); p.textContent = l.s; p.onclick = () => player.seek(l.t); box.append(p); });
+  if (res?.synced?.length) {
+    lines = res.synced;
+    lines.forEach(l => { const p = document.createElement('p'); p.textContent = l.s; p.onclick = () => player.seek(l.t); box.append(p); });
+    box.insertAdjacentHTML('beforeend', '<p class="src">Источник: ' + esc(res.src) + '</p>');
+    return;
+  }
+  if (res?.plain) {
+    box.classList.add('plain');
+    res.plain.split('\n').forEach(line => { const p = document.createElement('p'); p.textContent = line.trim(); if (!line.trim()) p.className = 'gap'; box.append(p); });
+    box.insertAdjacentHTML('beforeend', '<p class="src">Текст без синхронизации. Источник: ' + esc(res.src) + '</p>');
+    return;
+  }
+  const qs = encodeURIComponent(t.artists[0].name + ' ' + clean(t.name));
+  box.innerHTML = res?.instrumental ? '<p class="none">Инструментальный трек, слов нет.</p>'
+    : '<p class="none">Для этого трека не нашлось текста.</p><p class="src">Поискать вручную: <a href="https://genius.com/search?q=' + qs + '" target="_blank" rel="noopener">Genius</a> · <a href="https://www.google.com/search?q=' + qs + '%20текст%20песни" target="_blank" rel="noopener">Google</a></p>';
 }
 function syncLyrics(p) {
   if (!lines.length) return;
