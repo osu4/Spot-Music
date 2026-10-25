@@ -264,6 +264,21 @@ body.npopen #dock .ctl{gap:20px}
 #np.nolyr #lyrics{opacity:0;pointer-events:none}
 .trwrap{transition:opacity .4s}
 #np.nolyr .trwrap{opacity:0;pointer-events:none}
+#npbg{--cover:none}
+#npbg i{opacity:.5}
+#npbg b{position:absolute;left:50%;top:50%;width:150vmax;height:150vmax;margin:-75vmax 0 0 -75vmax;background:var(--cover) var(--pos,50% 50%)/var(--sz,180%) auto no-repeat;filter:blur(55px) saturate(1.7);will-change:transform;transition:opacity .8s}
+#npbg b:nth-of-type(1){--pos:20% 25%;--sz:180%;opacity:.9;animation:rotA 70s linear infinite,swayA 17s ease-in-out infinite alternate}
+#npbg b:nth-of-type(2){--pos:85% 30%;--sz:215%;opacity:.7;mix-blend-mode:screen;animation:rotB 95s linear infinite,swayB 23s ease-in-out infinite alternate}
+#npbg b:nth-of-type(3){--pos:50% 90%;--sz:250%;opacity:.55;mix-blend-mode:screen;animation:rotA 120s linear infinite,swayC 29s ease-in-out infinite alternate}
+#npbg.swap b{opacity:0}
+#npbg::after{content:"";position:absolute;inset:0;background:rgba(0,0,0,.26)}
+@keyframes rotA{to{rotate:360deg}}
+@keyframes rotB{to{rotate:-360deg}}
+@keyframes swayA{from{transform:translate(-5vmax,3vmax) scale(1)}to{transform:translate(6vmax,-4vmax) scale(1.12)}}
+@keyframes swayB{from{transform:translate(6vmax,-2vmax) scale(1.08)}to{transform:translate(-6vmax,5vmax) scale(.96)}}
+@keyframes swayC{from{transform:translate(-3vmax,-5vmax) scale(.98)}to{transform:translate(4vmax,6vmax) scale(1.14)}}
+#np:not(.open) #npbg b{animation-play-state:paused}
+@media(max-width:820px){#npbg b{filter:blur(40px) saturate(1.6)}#npbg b:nth-of-type(3){display:none}}
 /* ===== Liquid Glass ===== */
 #bg{filter:blur(70px) saturate(2.1)}
 #shade{background:linear-gradient(180deg,rgba(0,0,0,.28),rgba(0,0,0,.52))}
@@ -336,7 +351,7 @@ body.npopen #dock{left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bo
 </div>
 
 <section id="np">
-  <div id="npbg"><i></i><i></i><i></i><i></i></div>
+  <div id="npbg"><i></i><i></i><i></i><i></i><b></b><b></b><b></b></div>
   <div id="npbar"><div class="trwrap"><button class="gb" id="trBtn">Перевод</button><div id="trMenu"></div></div><button class="gb" id="xfBtn">Кроссфейд</button></div>
   <button id="npClose" aria-label="Свернуть"><svg viewBox="0 0 24 24"><path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg></button>
   <img id="npArt" alt="Обложка">
@@ -1062,6 +1077,7 @@ function onState(s) {
     djSpeak(t);
     if (xfPhase === 1) { xfPhase = 2; xfStart = performance.now(); }
     setPalette(t.album.images?.[1]?.url || t.album.images?.[0]?.url || '', t.id);
+    setCover(t.album.images?.[1]?.url || t.album.images?.[0]?.url || '');
   }
 }
 let likeUri = null, liked = false;
@@ -1245,6 +1261,21 @@ async function setPalette(url, id) {
   while (cols.length < 4) cols = cols.concat(cols).slice(0, 4);
   const bg = $('#npbg');
   cols.slice(0, 4).forEach((c, i) => bg.style.setProperty('--c' + (i + 1), c));
+}
+
+/* ---------- слои обложки в анимированном фоне ---------- */
+let coverTimer = null, coverUrl = '';
+function setCover(url) {
+  if (!url || url === coverUrl) return;
+  coverUrl = url;
+  const img = new Image();
+  img.onload = () => {
+    const bg = $('#npbg');
+    bg.classList.add('swap');
+    clearTimeout(coverTimer);
+    coverTimer = setTimeout(() => { bg.style.setProperty('--cover', 'url("' + url + '")'); bg.classList.remove('swap'); }, 650);
+  };
+  img.src = url;
 }
 
 /* ---------- перевод текста песни (через Gemini) ---------- */
