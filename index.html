@@ -320,6 +320,10 @@ body.npopen #dock{left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bo
 #view{padding-bottom:calc(170px + env(safe-area-inset-bottom))}
 #np{padding-bottom:260px;background:rgba(14,14,18,.5);-webkit-backdrop-filter:blur(40px) saturate(170%);backdrop-filter:blur(40px) saturate(170%)}
 }
+@property --tint{syntax:'<color>';inherits:true;initial-value:#5a4a52}
+:root{transition:--tint 1.2s}
+#dock,#tabs,#side,#devs{background:linear-gradient(135deg,color-mix(in srgb,var(--tint) 40%,transparent),color-mix(in srgb,var(--tint) 14%,transparent)),linear-gradient(135deg,rgba(255,255,255,.14),rgba(255,255,255,.04)),rgba(20,20,24,.2)}
+@media(min-width:821px){#np{inset:0;padding-bottom:calc(4vh + 96px)}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -352,7 +356,7 @@ body.npopen #dock{left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bo
 
 <section id="np">
   <div id="npbg"><i></i><i></i><i></i><i></i><b></b><b></b><b></b></div>
-  <div id="npbar"><div class="trwrap"><button class="gb" id="trBtn">Перевод</button><div id="trMenu"></div></div><button class="gb" id="xfBtn">Кроссфейд</button></div>
+  <div id="npbar"><button class="gb" id="restoreBtn" hidden>Вернуть текст</button><div class="trwrap"><button class="gb" id="trBtn">Перевод</button><div id="trMenu"></div></div><button class="gb" id="xfBtn">Кроссфейд</button></div>
   <button id="npClose" aria-label="Свернуть"><svg viewBox="0 0 24 24"><path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg></button>
   <img id="npArt" alt="Обложка">
   <div id="npInfo"><b id="npT"></b><span id="npA"></span></div>
@@ -964,12 +968,19 @@ async function route() {
 addEventListener('hashchange', route);
 
 document.addEventListener('click', async e => {
+  if (e.target.closest('#restoreBtn')) {
+    LS.removeItem('badlyr_' + shownId);
+    $('#restoreBtn').hidden = true;
+    if (lastTrack) loadLyrics(lastTrack, lastDur);
+    return;
+  }
   if (e.target.closest('#badLyr')) {
     e.preventDefault();
     LS.setItem('badlyr_' + shownId, '1');
     lines = []; lyricRows = []; cur = -1;
     $('#lyrics').innerHTML = '<p class="none">Текст скрыт.</p>';
     $('#np').classList.add('nolyr'); centerArt();
+    $('#restoreBtn').hidden = false;
     return;
   }
   if (!e.target.closest('.trwrap')) $('#trMenu').classList.remove('open');
@@ -1078,6 +1089,7 @@ function onState(s) {
     if (xfPhase === 1) { xfPhase = 2; xfStart = performance.now(); }
     setPalette(t.album.images?.[1]?.url || t.album.images?.[0]?.url || '', t.id);
     setCover(t.album.images?.[1]?.url || t.album.images?.[0]?.url || '');
+    lastTrack = t; lastDur = s.duration;
   }
 }
 let likeUri = null, liked = false;
@@ -1148,6 +1160,7 @@ async function loadLyrics(t, dur) {
   try { res = await findLyrics(t, dur); } catch (e) {}
   if (id !== shownId) return;
   $('#np').classList.toggle('nolyr', !(res?.synced?.length || res?.plain));
+  $('#restoreBtn').hidden = !LS.getItem('badlyr_' + id);
   centerArt();
   const addRow = (text, onclick) => {
     const p = document.createElement('p'), o = document.createElement('span'), tr = document.createElement('small');
@@ -1261,10 +1274,11 @@ async function setPalette(url, id) {
   while (cols.length < 4) cols = cols.concat(cols).slice(0, 4);
   const bg = $('#npbg');
   cols.slice(0, 4).forEach((c, i) => bg.style.setProperty('--c' + (i + 1), c));
+  document.documentElement.style.setProperty('--tint', cols[0]);
 }
 
 /* ---------- слои обложки в анимированном фоне ---------- */
-let coverTimer = null, coverUrl = '';
+let coverTimer = null, coverUrl = '', lastTrack = null, lastDur = 0;
 function setCover(url) {
   if (!url || url === coverUrl) return;
   coverUrl = url;
