@@ -949,6 +949,14 @@ async function route() {
 addEventListener('hashchange', route);
 
 document.addEventListener('click', async e => {
+  if (e.target.closest('#badLyr')) {
+    e.preventDefault();
+    LS.setItem('badlyr_' + shownId, '1');
+    lines = []; lyricRows = []; cur = -1;
+    $('#lyrics').innerHTML = '<p class="none">Текст скрыт.</p>';
+    $('#np').classList.add('nolyr'); centerArt();
+    return;
+  }
   if (!e.target.closest('.trwrap')) $('#trMenu').classList.remove('open');
   if (e.target.closest('#trBtn')) { $('#trMenu').classList.toggle('open'); return; }
   const tl = e.target.closest('.tl');
@@ -1075,26 +1083,41 @@ const parseLrc = lrc => lrc.split('\n').map(l => {
   return m && {t: (+m[1] * 60 + +m[2]) * 1000, s: m[3].trim()};
 }).filter(l => l && l.s);
 const lrclib = (path, params) => fetch('https://lrclib.net/api/' + path + '?' + new URLSearchParams(params)).then(r => r.ok ? r.json() : null);
+const norm = x => String(x || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/\(.*?\)|\[.*?\]/g, ' ').replace(/\s-\s.*$/, '').replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
 async function findLyrics(t, dur) {
-  const artist = t.artists[0].name, title = clean(t.name), secs = Math.round(dur / 1000), al = artist.toLowerCase();
-  let plain = null, instrumental = false;
-  const ok = x => x && (Math.abs((x.duration || 0) - secs) <= 3 || (x.artistName || '').toLowerCase().includes(al) || al.includes((x.artistName || '').toLowerCase()));
-  const note = x => { if (x?.instrumental) instrumental = true; if (!plain && x?.plainLyrics) plain = x.plainLyrics; };
-  // 1. LRCLIB: точное совпадение
+  if (LS.getItem('badlyr_' + t.id)) return null;
+  const artist = t.artists[0].name, title = clean(t.name), secs = Math.round(dur / 1000);
+  const nt = norm(title), allA = t.artists.map(a => norm(a.name)).filter(Boolean);
+  let plain = null, plainSrc = '', instrumental = false;
+  // строгая проверка: совпадает название И (исполнитель или почти точная длительность)
+  const ok = x => {
+    if (!x) return false;
+    const xt = norm(x.trackName || x.name), xa = norm(x.artistName);
+    if (!xt || !nt) return false;
+    const sim = Math.min(xt.length, nt.length) / Math.max(xt.length, nt.length);
+    const titleOk = xt === nt || (nt.length >= 4 && (xt.includes(nt) || nt.includes(xt)) && sim > 0.6);
+    if (!titleOk) return false;
+    const artistOk = xa && allA.some(a => xa.includes(a) || a.includes(xa));
+    const diff = Math.abs((x.duration || 0) - secs);
+    return artistOk ? diff <= 5 : (xt === nt && diff <= 1);
+  };
+  const label = x => 'LRCLIB: ' + (x.artistName || '?') + ' — ' + (x.trackName || x.name || '?');
+  const note = x => { if (x?.instrumental) instrumental = true; if (!plain && x?.plainLyrics) { plain = x.plainLyrics; plainSrc = label(x); } };
+  // 1. LRCLIB: точное совпадение (сервер сам сверяет исполнителя, название и длительность)
   const exact = await lrclib('get', {track_name: t.name, artist_name: artist, album_name: t.album.name, duration: secs}).catch(() => null);
   if (exact?.syncedLyrics) return {synced: parseLrc(exact.syncedLyrics), src: 'LRCLIB'};
   note(exact);
-  // 2. LRCLIB: поиск с разными формулировками
+  // 2. LRCLIB: поиск, но берём только строго подходящие результаты
   for (const q of [{track_name: title, artist_name: artist}, {q: artist + ' ' + title}, {q: title}]) {
     const arr = (await lrclib('search', q).catch(() => null) || []).filter(ok);
     arr.sort((a, b) => Math.abs(a.duration - secs) - Math.abs(b.duration - secs));
     const best = arr.find(x => x.syncedLyrics);
-    if (best) return {synced: parseLrc(best.syncedLyrics), src: 'LRCLIB'};
+    if (best) return {synced: parseLrc(best.syncedLyrics), src: label(best)};
     arr.forEach(note);
   }
-  if (plain) return {plain, src: 'LRCLIB'};
+  if (plain) return {plain, src: plainSrc || 'LRCLIB'};
   if (instrumental) return {instrumental: true};
-  // 3. lyrics.ovh: только простой текст, без синхронизации
+  // 3. lyrics.ovh: только простой текст, без синхронизации (ищет по исполнителю и названию)
   try {
     const r = await fetch('https://api.lyrics.ovh/v1/' + encodeURIComponent(artist) + '/' + encodeURIComponent(title));
     const d = r.ok ? await r.json() : null;
@@ -1119,11 +1142,11 @@ async function loadLyrics(t, dur) {
   if (res?.synced?.length) {
     lines = res.synced;
     lines.forEach(l => addRow(l.s, () => player.seek(l.t)));
-    box.insertAdjacentHTML('beforeend', '<p class="src">Источник: ' + esc(res.src) + '</p>');
+    box.insertAdjacentHTML('beforeend', '<p class="src">Источник: ' + esc(res.src) + ' · <a href="#" id="badLyr">Это не тот текст</a></p>');
   } else if (res?.plain) {
     box.classList.add('plain');
     res.plain.split('\n').forEach(line => { const x = line.trim(); if (x) addRow(x); else { const p = document.createElement('p'); p.className = 'gap'; box.append(p); } });
-    box.insertAdjacentHTML('beforeend', '<p class="src">Текст без синхронизации. Источник: ' + esc(res.src) + '</p>');
+    box.insertAdjacentHTML('beforeend', '<p class="src">Текст без синхронизации. Источник: ' + esc(res.src) + ' · <a href="#" id="badLyr">Это не тот текст</a></p>');
   } else {
     const qs = encodeURIComponent(t.artists[0].name + ' ' + clean(t.name));
     box.innerHTML = res?.instrumental ? '<p class="none">Инструментальный трек, слов нет.</p>'
@@ -1227,6 +1250,7 @@ async function setPalette(url, id) {
 /* ---------- перевод текста песни (через Gemini) ---------- */
 const LANGS = [['ru', 'Русский'], ['en', 'English'], ['es', 'Español'], ['de', 'Deutsch'], ['fr', 'Français'], ['it', 'Italiano'], ['pt', 'Português'], ['uk', 'Українська'], ['tr', 'Türkçe'], ['ja', '日本語'], ['ko', '한국어'], ['zh', '中文']];
 let lyricRows = [], trSeq = 0;
+const hashStr = str => { let x = 5381; for (const c of str) x = (x * 33) ^ c.charCodeAt(0); return (x >>> 0).toString(36); };
 const trLang = () => LS.getItem('trlang') || '';
 const updateTrBtn = () => { const n = Object.fromEntries(LANGS)[trLang()]; $('#trBtn').textContent = n ? 'Перевод: ' + n : 'Перевод'; $('#trBtn').classList.toggle('on', !!n); };
 async function translateLyrics() {
@@ -1234,7 +1258,7 @@ async function translateLyrics() {
   lyricRows.forEach(r => { r.tr.textContent = ''; });
   if (!lang || !lyricRows.length || !$('#np').classList.contains('open')) return;
   if (!gKey()) return toast('Для перевода нужен ключ Gemini: впиши его на странице «Мой DJ»');
-  const key = 'tr_' + id + '_' + lang;
+  const key = 'tr_' + hashStr(lyricRows.map(r => r.text).join('|')) + '_' + lang;
   let out = null;
   try { out = JSON.parse(LS.getItem(key) || 'null'); } catch (e) {}
   if (!out) {
