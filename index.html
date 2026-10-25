@@ -258,6 +258,12 @@ body.npopen #dock .ctl{gap:20px}
 #lyrics p .tr:empty{display:none}
 #lyrics.plain p .tr{font-size:.75em}
 @media(max-width:820px){#npbar{top:calc(12px + env(safe-area-inset-top));right:14px}#npbg i{filter:blur(45px)}.gb{padding:8px 12px;font-size:12px}}
+#npArt,#npInfo{translate:var(--sx,0px) var(--sy,0px);transition:translate .9s cubic-bezier(.2,.8,.2,1),scale .9s cubic-bezier(.2,.8,.2,1),transform .45s cubic-bezier(.2,.8,.2,1),opacity .4s}
+#np.nolyr #npArt{scale:1.1}
+#lyrics{transition:opacity .6s}
+#np.nolyr #lyrics{opacity:0;pointer-events:none}
+.trwrap{transition:opacity .4s}
+#np.nolyr .trwrap{opacity:0;pointer-events:none}
 /* ===== Liquid Glass ===== */
 #bg{filter:blur(70px) saturate(2.1)}
 #shade{background:linear-gradient(180deg,rgba(0,0,0,.28),rgba(0,0,0,.52))}
@@ -1102,6 +1108,8 @@ async function loadLyrics(t, dur) {
   let res = null;
   try { res = await findLyrics(t, dur); } catch (e) {}
   if (id !== shownId) return;
+  $('#np').classList.toggle('nolyr', !(res?.synced?.length || res?.plain));
+  centerArt();
   const addRow = (text, onclick) => {
     const p = document.createElement('p'), o = document.createElement('span'), tr = document.createElement('small');
     o.textContent = text; tr.className = 'tr'; p.append(o, tr);
@@ -1124,6 +1132,16 @@ async function loadLyrics(t, dur) {
   }
   translateLyrics();
 }
+function centerArt() {
+  const np = $('#np'), art = $('#npArt'), ly = $('#lyrics');
+  let sx = 0, sy = 0;
+  if (np.classList.contains('nolyr')) {
+    if (innerWidth > 820) sx = np.clientWidth / 2 - (art.offsetLeft + art.offsetWidth / 2);
+    else sy = ly.offsetHeight * 0.4;
+  }
+  np.style.setProperty('--sx', sx + 'px'); np.style.setProperty('--sy', sy + 'px');
+}
+addEventListener('resize', centerArt);
 function syncLyrics(p) {
   if (!lines.length) return;
   let i = lines.findIndex(l => l.t > p);
