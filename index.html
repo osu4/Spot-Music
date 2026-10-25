@@ -279,6 +279,9 @@ body.npopen #dock .ctl{gap:20px}
 @keyframes swayC{from{transform:translate(-3vmax,-5vmax) scale(.98)}to{transform:translate(4vmax,6vmax) scale(1.14)}}
 #np:not(.open) #npbg b{animation-play-state:paused}
 @media(max-width:820px){#npbg b{filter:blur(40px) saturate(1.6)}#npbg b:nth-of-type(3){display:none}}
+#trNote{position:absolute;top:62px;right:24px;max-width:min(380px,82vw);padding:10px 14px;border-radius:14px;font-size:12px;line-height:1.4;color:#fff;background:linear-gradient(135deg,rgba(255,255,255,.18),rgba(255,255,255,.06)),rgba(20,20,24,.6);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);z-index:3;opacity:0;visibility:hidden;transition:opacity .3s,visibility 0s .3s}
+#trNote.show{opacity:1;visibility:visible;transition:opacity .3s}
+@media(max-width:820px){#trNote{top:calc(58px + env(safe-area-inset-top));right:14px}}
 /* ===== Liquid Glass ===== */
 #bg{filter:blur(70px) saturate(2.1)}
 #shade{background:linear-gradient(180deg,rgba(0,0,0,.28),rgba(0,0,0,.52))}
@@ -364,6 +367,7 @@ body.npopen #dock{left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bo
 <section id="np">
   <div id="npbg"><i></i><i></i><i></i><i></i><b></b><b></b><b></b></div>
   <div id="npbar"><button class="gb" id="restoreBtn" hidden>Вернуть текст</button><div class="trwrap"><button class="gb" id="trBtn">Перевод</button><div id="trMenu"></div></div><button class="gb" id="xfBtn">Кроссфейд</button></div>
+  <div id="trNote"></div>
   <button id="npClose" aria-label="Свернуть"><svg viewBox="0 0 24 24"><path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg></button>
   <img id="npArt" alt="Обложка">
   <div id="npInfo"><b id="npT"></b><span id="npA"></span></div>
@@ -644,7 +648,7 @@ const useGemini = () => dj.engine === 'gemini' && !!gKey();
 const INTRO = 'Привет! Я твой DJ. Сегодня микс целиком из твоей музыки. Начинаем.';
 let actx = null, gWarned = false;
 const audioCache = new Map();
-const gErr = e => ({'404': 'Gemini: такой модели нет, проверь название в поле «Модель»', '400': 'Gemini: запрос отклонён, проверь модель и ключ', '401': 'Gemini: ключ не подошёл', '403': 'Gemini: ключ не подошёл или нет доступа', '429': 'Gemini: превышен лимит запросов'})[e.message] || 'Gemini: не получилось (' + e.message + ')';
+const gErr = e => ({'404': 'Gemini: такой модели нет, проверь название в поле «Модель»', '400': 'Gemini: запрос отклонён, проверь ключ и модель', '401': 'Gemini: ключ не подошёл', '403': 'Gemini: ключ не подошёл или нет доступа', '429': 'Gemini: превышен лимит запросов (подожди или возьми другой ключ)', 'blocked': 'Gemini отказался отвечать (сработал фильтр безопасности)', 'format': 'Gemini вернул ответ в неожиданном формате', 'сеть': 'нет связи с Gemini (интернет или блокировка)'})[e.message] || (/^\d+$/.test(e.message) ? 'Gemini: не получилось (' + e.message + ')' : e.message);
 function geminiAudio(text) {
   const k = gModel() + '|' + gVoice() + '|' + text;
   if (!audioCache.has(k)) audioCache.set(k, (async () => {
@@ -723,16 +727,32 @@ async function launchMix(picked, intro) {
 
 /* ---------- запрос вайба своими словами ---------- */
 const gText = () => LS.getItem('gtext') || 'gemini-flash-latest';
-async function geminiJson(prompt) {
-  const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + gText() + ':generateContent', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json', 'x-goog-api-key': gKey()},
-    body: JSON.stringify({contents: [{parts: [{text: prompt}]}], generationConfig: {responseMimeType: 'application/json', temperature: 0.9}})
-  });
-  if (!r.ok) throw new Error(r.status);
-  const d = await r.json();
-  const txt = (d.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('');
-  return JSON.parse(txt.replace(/^\s*```(?:json)?\s*|\s*```\s*$/g, '').trim());
+const GEMINI_MODELS = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-flash-lite-latest', 'gemini-2.5-flash-lite'];
+const SAFETY = ['HARASSMENT', 'HATE_SPEECH', 'SEXUALLY_EXPLICIT', 'DANGEROUS_CONTENT'].map(c => ({category: 'HARM_CATEGORY_' + c, threshold: 'BLOCK_NONE'}));
+async function geminiJson(prompt, temp = 0.9) {
+  const models = [...new Set([LS.getItem('gtext_ok'), LS.getItem('gtext'), ...GEMINI_MODELS].filter(Boolean))];
+  let lastErr = new Error('нет ответа');
+  for (const m of models) {
+    let r;
+    try {
+      r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'x-goog-api-key': gKey()},
+        body: JSON.stringify({contents: [{parts: [{text: prompt}]}], safetySettings: SAFETY, generationConfig: {responseMimeType: 'application/json', temperature: temp}})
+      });
+    } catch (e) { lastErr = new Error('сеть'); continue; }
+    if (r.status === 401 || r.status === 403) throw new Error(r.status);
+    if (!r.ok) { lastErr = new Error(r.status); continue; }   // 404/429/5xx: пробуем следующую модель
+    const d = await r.json();
+    const txt = (d.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('');
+    if (!txt) { lastErr = new Error('blocked'); continue; }
+    try {
+      const j = JSON.parse(txt.replace(/^\s*```(?:json)?\s*|\s*```\s*$/g, '').trim());
+      LS.setItem('gtext_ok', m);
+      return j;
+    } catch (e) { lastErr = new Error('format'); }
+  }
+  throw lastErr;
 }
 async function vibe(text, status) {
   if (!gKey()) {
@@ -1306,27 +1326,42 @@ let lyricRows = [], trSeq = 0;
 const hashStr = str => { let x = 5381; for (const c of str) x = (x * 33) ^ c.charCodeAt(0); return (x >>> 0).toString(36); };
 const trLang = () => LS.getItem('trlang') || '';
 const updateTrBtn = () => { const n = Object.fromEntries(LANGS)[trLang()]; $('#trBtn').textContent = n ? 'Перевод: ' + n : 'Перевод'; $('#trBtn').classList.toggle('on', !!n); };
+let trNoteT = null;
+function trNote(msg) {
+  const n = $('#trNote'); n.textContent = msg; n.classList.add('show');
+  clearTimeout(trNoteT); trNoteT = setTimeout(() => n.classList.remove('show'), 12000);
+}
 async function translateLyrics() {
   const lang = trLang(), my = ++trSeq, id = shownId;
   lyricRows.forEach(r => { r.tr.textContent = ''; });
   if (!lang || !lyricRows.length || !$('#np').classList.contains('open')) return;
-  if (!gKey()) return toast('Для перевода нужен ключ Gemini: впиши его на странице «Мой DJ»');
+  if (!gKey()) return trNote('Для перевода нужен ключ Gemini: впиши его на странице «Мой DJ» (поле вверху настроек).');
   const key = 'tr_' + hashStr(lyricRows.map(r => r.text).join('|')) + '_' + lang;
   let out = null;
   try { out = JSON.parse(LS.getItem(key) || 'null'); } catch (e) {}
   if (!out) {
     $('#trBtn').textContent = 'Перевожу…';
     try {
-      const j = await geminiJson('Переведи строки песни на язык: ' + Object.fromEntries(LANGS)[lang] + '. Сохрани порядок и количество строк. Верни ТОЛЬКО JSON-массив строк перевода, ровно ' + lyricRows.length + ' элементов.\n' + JSON.stringify(lyricRows.map(r => r.text)));
-      if (!Array.isArray(j)) throw new Error('неожиданный ответ');
-      out = j.map(x => String(x));
+      const rows = lyricRows.map((r, i) => ({i, t: r.text}));
+      const j = await geminiJson('Переведи строки песни на язык: ' + Object.fromEntries(LANGS)[lang] + '. Переводи смысл естественно, сленг и грубые слова передавай как есть, ничего не пропускай и не добавляй. Верни ТОЛЬКО JSON-массив объектов {"i": номер строки, "t": перевод}, по одному на каждую входную строку.\n' + JSON.stringify(rows), 0.3);
+      const arr = Array.isArray(j) ? j : Object.values(j || {}).find(Array.isArray);
+      if (!arr) throw new Error('format');
+      out = lyricRows.map(() => '');
+      arr.forEach((x, k) => {
+        if (x && typeof x === 'object') { const n = Number.isInteger(+x.i) ? +x.i : k; if (n >= 0 && n < out.length) out[n] = String(x.t ?? x.text ?? ''); }
+        else if (k < out.length) out[k] = String(x);
+      });
+      if (!out.some(Boolean)) throw new Error('format');
       try {
         LS.setItem(key, JSON.stringify(out));
         const ks = JSON.parse(LS.getItem('trkeys') || '[]'); ks.push(key);
         while (ks.length > 30) LS.removeItem(ks.shift());
         LS.setItem('trkeys', JSON.stringify(ks));
       } catch (e) {}
-    } catch (e) { if (my === trSeq) toast('Не получилось перевести: ' + (/^\d+$/.test(e.message) ? gErr(e) : e.message)); }
+    } catch (e) {
+      out = null;
+      if (my === trSeq) trNote('Перевод не получился: ' + gErr(e) + '. Выбери язык ещё раз, чтобы повторить.');
+    }
     updateTrBtn();
   }
   if (out && my === trSeq && id === shownId) lyricRows.forEach((r, i) => { r.tr.textContent = out[i] || ''; });
