@@ -334,6 +334,18 @@ body.npopen #dock{left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bo
 #shade::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.22),rgba(0,0,0,.5))}
 #bg{filter:blur(40px) saturate(2)}
 }
+/* --- облегчение нагрузки на видеокарту --- */
+#bg{filter:none;inset:0;transform:none}
+#npbg i{filter:none;mix-blend-mode:normal;opacity:.55}
+#npbg b{width:115vmax;height:115vmax;margin:-57.5vmax 0 0 -57.5vmax;filter:none;mix-blend-mode:normal}
+#npbg b:nth-of-type(2){opacity:.6}
+#npbg b:nth-of-type(3){opacity:.5}
+#npbg.swap b{opacity:0!important}
+#np{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgba(14,14,18,.3)}
+body.npopen #side{visibility:hidden;-webkit-backdrop-filter:none;backdrop-filter:none}
+#fill{width:100%;transform:scaleX(0);transform-origin:left;transition:transform .12s linear}
+body.noanim #npbg b,body.noanim #npbg i,body.noanim #shade::before{animation:none!important}
+@media(max-width:820px){#npbg b{filter:none}#npbg b:nth-of-type(3){display:none}#np{background:rgba(14,14,18,.4)}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -366,7 +378,7 @@ body.npopen #dock{left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bo
 
 <section id="np">
   <div id="npbg"><i></i><i></i><i></i><i></i><b></b><b></b><b></b></div>
-  <div id="npbar"><button class="gb" id="restoreBtn" hidden>Вернуть текст</button><div class="trwrap"><button class="gb" id="trBtn">Перевод</button><div id="trMenu"></div></div><button class="gb" id="xfBtn">Кроссфейд</button></div>
+  <div id="npbar"><button class="gb" id="restoreBtn" hidden>Вернуть текст</button><div class="trwrap"><button class="gb" id="trBtn">Перевод</button><div id="trMenu"></div></div><button class="gb" id="xfBtn">Кроссфейд</button><button class="gb" id="fxBtn">Анимация</button></div>
   <div id="trNote"></div>
   <button id="npClose" aria-label="Свернуть"><svg viewBox="0 0 24 24"><path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg></button>
   <img id="npArt" alt="Обложка">
@@ -1014,6 +1026,7 @@ document.addEventListener('click', async e => {
   if (e.target.closest('#trBtn')) { $('#trMenu').classList.toggle('open'); return; }
   const tl = e.target.closest('.tl');
   if (tl) return setTrLang(tl.dataset.l);
+  if (e.target.closest('#fxBtn')) { document.body.classList.toggle('noanim'); LS.setItem('fx', document.body.classList.contains('noanim') ? '0' : '1'); updateFxBtn(); return; }
   if (e.target.closest('#xfBtn')) { LS.setItem('xfs', {0: 3, 3: 4, 4: 5, 5: 0}[xfSecs()] ?? 4); updateXfBtn(); return; }
   if (e.target.closest('#djStart')) return startDj();
   if (e.target.closest('#gtest')) return testVoice();
@@ -1106,8 +1119,6 @@ function onState(s) {
     $('#bArtist').textContent = t.artists.map(a => a.name).join(', ');
     $('#npT').textContent = t.name; $('#npA').textContent = t.artists.map(a => a.name).join(', ');
     ['#bArt', '#npArt'].forEach(id => { const el = $(id); el.style.opacity = 0; el.onload = el.onerror = () => el.style.opacity = 1; el.src = img; });
-    const bg = $('#bg'); bg.style.opacity = 0;
-    setTimeout(() => { bg.style.backgroundImage = `url("${img}")`; bg.style.opacity = 1; }, 380);
     $('#tEnd').textContent = fmt(s.duration);
     loadLyrics(t, s.duration);
     checkLike(t.uri);
@@ -1115,7 +1126,7 @@ function onState(s) {
     djSpeak(t);
     if (xfPhase === 1) { xfPhase = 2; xfStart = performance.now(); }
     setPalette(t.album.images?.[1]?.url || t.album.images?.[0]?.url || '', t.id);
-    setCover(t.album.images?.[1]?.url || t.album.images?.[0]?.url || '');
+    setCover(t.album.images?.slice(-1)[0]?.url || '');
     lastTrack = t; lastDur = s.duration;
   }
 }
@@ -1307,17 +1318,37 @@ async function setPalette(url, id) {
 
 /* ---------- слои обложки в анимированном фоне ---------- */
 let coverTimer = null, coverUrl = '', lastTrack = null, lastDur = 0;
-function setCover(url) {
+const softCache = new Map();
+function softCover(url) {
+  if (!softCache.has(url)) softCache.set(url, new Promise(res => {
+    const img = new Image(); img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const c = document.createElement('canvas'); c.width = c.height = 48;
+        const x = c.getContext('2d');
+        x.filter = 'saturate(1.7) blur(1.5px)';
+        x.drawImage(img, 0, 0, 48, 48);
+        res(c.toDataURL('image/jpeg', 0.85));
+      } catch (e) { res(url); }
+    };
+    img.onerror = () => res(url);
+    img.src = url;
+  }));
+  return softCache.get(url);
+}
+async function setCover(url) {
   if (!url || url === coverUrl) return;
   coverUrl = url;
-  const img = new Image();
-  img.onload = () => {
-    const bg = $('#npbg');
-    bg.classList.add('swap');
-    clearTimeout(coverTimer);
-    coverTimer = setTimeout(() => { bg.style.setProperty('--cover', 'url("' + url + '")'); bg.classList.remove('swap'); }, 650);
-  };
-  img.src = url;
+  const soft = await softCover(url);
+  if (url !== coverUrl) return;
+  const layers = $('#npbg'), g = $('#bg');
+  layers.classList.add('swap'); g.style.opacity = 0;
+  clearTimeout(coverTimer);
+  coverTimer = setTimeout(() => {
+    layers.style.setProperty('--cover', 'url("' + soft + '")');
+    g.style.backgroundImage = 'url("' + soft + '")';
+    layers.classList.remove('swap'); g.style.opacity = 1;
+  }, 650);
 }
 
 /* ---------- перевод текста песни (через Gemini) ---------- */
@@ -1372,17 +1403,21 @@ function setTrLang(l) {
   translateLyrics();
 }
 $('#trMenu').innerHTML = [['', 'Без перевода'], ...LANGS].map(([c, n]) => `<button class="tl" data-l="${c}">${n}</button>`).join('');
-updateTrBtn(); updateXfBtn();
+const updateFxBtn = () => { $('#fxBtn').textContent = 'Анимация: ' + (document.body.classList.contains('noanim') ? 'выкл' : 'вкл'); };
+if (LS.getItem('fx') === '0') document.body.classList.add('noanim');
+updateTrBtn(); updateXfBtn(); updateFxBtn();
 if (REMOTE) $('#xfBtn').hidden = true;
 
-(function loop() {
+let lastSec = -1;
+setInterval(() => {
   const p = position();
-  $('#fill').style.width = (p / st.dur * 100) + '%';
-  $('#tNow').textContent = fmt(p);
-  if ($('#np').classList.contains('open')) syncLyrics(p);
   xfTick(p);
-  requestAnimationFrame(loop);
-})();
+  if (document.hidden) return;
+  $('#fill').style.transform = 'scaleX(' + Math.min(1, p / st.dur) + ')';
+  const sec = Math.floor(p / 1000);
+  if (sec !== lastSec) { lastSec = sec; $('#tNow').textContent = fmt(p); }
+  if ($('#np').classList.contains('open')) syncLyrics(p);
+}, 100);
 
 const toggleNp = () => { const np = $('#np'); np.classList.toggle('open'); document.body.classList.toggle('npopen', np.classList.contains('open')); $('#npBtn').classList.toggle('on', np.classList.contains('open')); if (np.classList.contains('open')) { cur = -1; snap = true; translateLyrics(); } };
 $('#mini').onclick = $('#npBtn').onclick = $('#npClose').onclick = toggleNp;
